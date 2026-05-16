@@ -130,6 +130,14 @@ pub fn codegen_run(
             arch.expect("--emit-nvvm-ir requires --arch")
         );
         println!();
+    } else if detected_run_arch.is_some() {
+        // Surface the auto-detect outcome so it isn't silent magic; users
+        // chasing a JIT/load failure can see exactly which arch was picked.
+        println!(
+            "Target arch: {} (auto-detected from CUDA device 0)",
+            detected_run_arch.as_deref().unwrap()
+        );
+        println!();
     }
     println!("This is the proper cargo workflow:");
     println!("  RUSTFLAGS=\"-Z codegen-backend=...\" cargo run");

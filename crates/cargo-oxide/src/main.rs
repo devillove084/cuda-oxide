@@ -54,7 +54,10 @@ enum Commands {
         /// Generate NVVM IR (use with libNVVM -gen-lto)
         #[arg(long)]
         emit_nvvm_ir: bool,
-        /// Target architecture (e.g., sm_90, sm_100, sm_120)
+        /// Target architecture (e.g., sm_90, sm_100, sm_120). When omitted,
+        /// `run` auto-detects the compute capability of CUDA device 0 so the
+        /// generated module loads on the local GPU; set `CUDA_OXIDE_TARGET`
+        /// in the environment for a non-interactive override.
         #[arg(long)]
         arch: Option<String>,
         /// Comma-separated list of features to enable
