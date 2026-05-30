@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#![feature(f16)]
 #![no_std]
 
 pub use cuda_macros::{
@@ -14,8 +15,8 @@ pub use cuda_macros::{
 pub mod atomic;
 pub mod barrier;
 pub mod clc;
-pub mod constant;
 pub mod cluster;
+pub mod constant;
 pub mod cooperative_groups;
 pub mod cusimd;
 pub mod debug;
@@ -49,10 +50,10 @@ pub use barrier::{
     // State markers
     Uninit,
 };
+pub use constant::{ConstantMemory, ConstantMemoryValue};
 pub use cusimd::{CuSimd, Float2, Float4, TmemRegs4, TmemRegs32};
 pub use disjoint::DisjointSlice;
 pub use fence::*;
-pub use constant::Constant;
 pub use shared::{DynamicSharedArray, SharedArray};
 pub use tcgen05::{
     TensorMemoryHandle, TmemAddress, TmemDeallocated, TmemF32x4, TmemF32x32, TmemGuard, TmemReady,

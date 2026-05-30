@@ -22,14 +22,14 @@
 //!   cargo oxide run constant_memory_coeffs
 
 use cuda_core::{CudaContext, DeviceBuffer, LaunchConfig};
-use cuda_device::{Constant, DisjointSlice, constant, cuda_module, kernel, thread};
+use cuda_device::{ConstantMemory, DisjointSlice, constant, cuda_module, kernel, thread};
 
 #[cuda_module]
 mod kernels {
     use super::*;
 
     #[constant]
-    static COEFFS: Constant<[f32; 4]> = Constant::UNINIT;
+    static COEFFS: ConstantMemory<[f32; 4]> = ConstantMemory::UNINIT;
 
     #[kernel]
     pub fn compute(mut out: DisjointSlice<f32>) {
@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let module = kernels::load(&ctx)?;
 
     let h_coeffs: [f32; 4] = [1.0, 2.0, 3.0, 4.0];
-    module.set_COEFFS(&stream, &h_coeffs)?;
+    module.set_coeffs(&stream, &h_coeffs)?;
 
     let mut out = DeviceBuffer::<f32>::zeroed(&stream, 10)?;
     module.compute(&stream, LaunchConfig::for_num_elems(10), &mut out)?;

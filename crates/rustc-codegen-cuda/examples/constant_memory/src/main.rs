@@ -7,7 +7,7 @@
 //!
 //! Demonstrates that:
 //! 1. A `#[constant]` static lowers to PTX `.const` (address space 4).
-//! 2. The macro-generated `module.set_COEFFS(&value)` populates it from
+//! 2. The macro-generated `module.set_coeffs(&value)` populates it from
 //!    the host via `cuModuleGetGlobal` + `cuMemcpyHtoD`.
 //! 3. Re-setting the constant between launches is observable by the kernel.
 //!
@@ -15,14 +15,14 @@
 //!   cargo oxide run constant_memory
 
 use cuda_core::{CudaContext, DeviceBuffer, LaunchConfig};
-use cuda_device::{Constant, DisjointSlice, constant, cuda_module, kernel, thread};
+use cuda_device::{ConstantMemory, DisjointSlice, constant, cuda_module, kernel, thread};
 
 #[cuda_module]
 mod kernels {
     use super::*;
 
     #[constant]
-    static COEFFS: Constant<[f32; 4]> = Constant::UNINIT;
+    static COEFFS: ConstantMemory<[f32; 4]> = ConstantMemory::UNINIT;
 
     #[kernel]
     pub fn apply(mut output: DisjointSlice<f32>) {
@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         // set + launch on the same stream → naturally ordered. The second
         // launch demonstrates that re-setting between launches is observed.
-        module.set_COEFFS(&stream, &coeffs)?;
+        module.set_coeffs(&stream, &coeffs)?;
         module.apply(
             &stream,
             LaunchConfig::for_num_elems(N as u32),

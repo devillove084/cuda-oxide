@@ -9,14 +9,17 @@
 //!   cargo oxide run constant_memory_simple
 
 use cuda_core::{CudaContext, DeviceBuffer, LaunchConfig};
-use cuda_device::{Constant, DisjointSlice, constant, cuda_module, kernel, thread};
+use cuda_device::{ConstantMemory, DisjointSlice, constant, cuda_module, kernel, thread};
 
 #[cuda_module]
 mod kernels {
     use super::*;
 
     #[constant]
-    static SCALE: Constant<f32> = Constant::UNINIT;
+    static SCALE: ConstantMemory<f32> = ConstantMemory::UNINIT;
+
+    #[constant]
+    static UNUSED: ConstantMemory<f32> = ConstantMemory::UNINIT;
 
     #[kernel]
     pub fn multiply(mut out: DisjointSlice<f32>) {
@@ -34,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stream = ctx.default_stream();
     let module = kernels::load(&ctx)?;
 
-    module.set_SCALE(&stream, &3.0)?;
+    module.set_scale(&stream, &3.0)?;
 
     let mut out = DeviceBuffer::<f32>::zeroed(&stream, 8)?;
     module.multiply(&stream, LaunchConfig::for_num_elems(8), &mut out)?;

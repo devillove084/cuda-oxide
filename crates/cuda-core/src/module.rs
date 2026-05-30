@@ -21,7 +21,7 @@
 use crate::context::CudaContext;
 use crate::error::{DriverError, IntoResult};
 use std::borrow::Cow;
-use std::ffi::CString;
+use std::ffi::{CString, c_void};
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 
@@ -208,12 +208,11 @@ impl CudaModule {
     }
 }
 
-/// A resolved handle to a `#[constant]` device global, captured once at
-/// module load time. Macro-generated `set_<NAME>` methods store one of
-/// these per constant on the `LoadedModule` struct so each `set_<NAME>`
-/// call is a single `cuMemcpyHtoD` with no symbol lookup. Callers pass
-/// `size_of::<T>()` on every write; correctness depends on the load-time
-/// assertion that the driver-reported size matches the host-side type.
+/// A resolved handle to a `#[constant]` device global. Macro-generated
+/// `set_<name>` methods resolve these lazily on first use and cache the
+/// handle on the `LoadedModule` struct. Callers pass `size_of::<T>()` on
+/// every write; correctness depends on the resolver asserting that the
+/// driver-reported size matches the host-side type.
 #[derive(Clone, Copy, Debug)]
 pub struct ConstantHandle {
     pub(crate) dptr: cuda_bindings::CUdeviceptr,
@@ -249,9 +248,66 @@ impl ConstantHandle {
         num_bytes: usize,
     ) -> Result<(), DriverError> {
         stream.context().bind_to_thread()?;
-        unsafe {
-            crate::memory::memcpy_htod_async(self.dptr, src, num_bytes, stream.cu_stream())
+        unsafe { crate::memory::memcpy_htod_async(self.dptr, src, num_bytes, stream.cu_stream()) }
+    }
+
+    /// Stream-ordered `cuMemcpyHtoDAsync` from owned host bytes into the
+    /// device global.
+    ///
+    /// The bytes are kept alive until the stream reaches a host callback
+    /// enqueued after the copy. This makes safe setters sound even when the
+    /// caller passes a temporary such as `&3.0`.
+    pub fn write_async_staged(
+        &self,
+        stream: &crate::CudaStream,
+        bytes: Box<[MaybeUninit<u8>]>,
+    ) -> Result<(), DriverError> {
+        stream.context().bind_to_thread()?;
+        let num_bytes = bytes.len();
+        if num_bytes == 0 {
+            return Ok(());
         }
+
+        unsafe {
+            crate::memory::memcpy_htod_async(
+                self.dptr,
+                bytes.as_ptr() as *const u8,
+                num_bytes,
+                stream.cu_stream(),
+            )?;
+        }
+
+        unsafe extern "C" fn drop_staged_bytes(callback: *mut c_void) {
+            drop(unsafe {
+                Box::<Box<[MaybeUninit<u8>]>>::from_raw(callback as *mut Box<[MaybeUninit<u8>]>)
+            });
+        }
+
+        let callback_data = Box::into_raw(Box::new(bytes)) as *mut c_void;
+        let callback_result = unsafe {
+            cuda_bindings::cuLaunchHostFunc(
+                stream.cu_stream(),
+                Some(drop_staged_bytes),
+                callback_data,
+            )
+        }
+        .result();
+
+        if let Err(err) = callback_result {
+            let staged = unsafe {
+                Box::<Box<[MaybeUninit<u8>]>>::from_raw(
+                    callback_data as *mut Box<[MaybeUninit<u8>]>,
+                )
+            };
+            if let Err(sync_err) = stream.synchronize() {
+                Box::leak(staged);
+                return Err(sync_err);
+            }
+            drop(staged);
+            return Err(err);
+        }
+
+        Ok(())
     }
 
     /// Synchronous `cuMemcpyHtoD` from `src` into the device global. Blocks
@@ -314,7 +370,7 @@ impl CudaModule {
     /// device global at `dptr`.
     ///
     /// Intended for populating `#[constant]` statics from the macro-generated
-    /// `set_<NAME>` methods on `LoadedModule`. The caller is expected to have
+    /// `set_<name>_blocking` methods on `LoadedModule`. The caller is expected to have
     /// already resolved `dptr` via [`get_global`](Self::get_global) and
     /// verified that the driver-reported size matches the host type's size.
     ///

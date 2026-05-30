@@ -1751,7 +1751,7 @@ pub fn translate_operand(
                 // All device-side statics — `#[constant]` and ordinary — must
                 // currently be zero-initialized. Lowering honored initializers
                 // into PTX `.const` (or `.global`) bytes is on the roadmap;
-                // for now use `Constant::UNINIT` and populate from host.
+                // for now use `ConstantMemory::UNINIT` and populate from host.
                 ensure_zero_initializer(&static_def, loc.clone())?;
                 let is_constant = is_constant_wrapper_type(&pointee_ty);
 

@@ -426,7 +426,7 @@ pub fn convert_global_alloc_dc(
         let alignment = global_op.get_alignment_value(ctx).unwrap_or(0);
 
         // Read the address space the op's result already carries — set by
-        // mir-importer based on the static's type (`Constant<T>` → 4,
+        // mir-importer based on the static's type (`ConstantMemory<T>` → 4,
         // ordinary → 1). The dialect verifier accepts both.
         let res_ty = op_ref.get_result(0).get_type(ctx);
         let addr_space = res_ty
@@ -480,23 +480,22 @@ fn create_device_global(
 ) -> Result<pliron::identifier::Identifier> {
     let llvm_global_type = convert_type(ctx, mir_global_type).map_err(anyhow_to_pliron)?;
 
-    // Constant globals reuse the Rust-side mangled name so host code can
+    // Constant-memory globals reuse the Rust-side mangled name so host code can
     // resolve them by name via `cuModuleGetGlobal`. Ordinary device globals
     // are private to the kernel and get a counter-based unique name.
-    let name: pliron::identifier::Identifier = if addr_space
-        == dialect_llvm::types::address_space::CONSTANT
-    {
-        global_key.try_into().map_err(|e| {
-            anyhow_to_pliron(anyhow::anyhow!(
-                "constant global_key {global_key:?} is not a valid identifier: {e:?}"
-            ))
-        })?
-    } else {
-        static DEVICE_GLOBAL_COUNTER: std::sync::atomic::AtomicUsize =
-            std::sync::atomic::AtomicUsize::new(0);
-        let counter = DEVICE_GLOBAL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        format!("__device_global_{counter}").try_into().unwrap()
-    };
+    let name: pliron::identifier::Identifier =
+        if addr_space == dialect_llvm::types::address_space::CONSTANT {
+            global_key.try_into().map_err(|e| {
+                anyhow_to_pliron(anyhow::anyhow!(
+                    "constant global_key {global_key:?} is not a valid identifier: {e:?}"
+                ))
+            })?
+        } else {
+            static DEVICE_GLOBAL_COUNTER: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
+            let counter = DEVICE_GLOBAL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            format!("__device_global_{counter}").try_into().unwrap()
+        };
 
     let global_op = if alignment > 0 {
         llvm::GlobalOp::new_with_alignment(ctx, name.clone(), llvm_global_type, alignment)
