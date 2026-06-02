@@ -696,6 +696,7 @@ mod tests {
     //! pattern as `tests/lowering_test.rs`.
 
     use super::*;
+    use crate::convert::ops::test_util::*;
     use dialect_llvm::op_interfaces::PointerTypeResult;
     use dialect_llvm::ops as llvm;
     use dialect_llvm::types::{PointerType, address_space as llvm_addr};
@@ -704,116 +705,11 @@ mod tests {
     use pliron::basic_block::BasicBlock;
     use pliron::builtin::attributes::{StringAttr, TypeAttr};
     use pliron::builtin::op_interfaces::SymbolOpInterface;
-    use pliron::builtin::ops::ModuleOp;
-    use pliron::builtin::types::{FunctionType, IntegerType, Signedness};
+    use pliron::builtin::types::{IntegerType, Signedness};
     use pliron::context::Context;
     use pliron::linked_list::ContainsLinkedList;
     use pliron::op::Op;
     use pliron::operation::Operation;
-
-    fn make_ctx() -> Context {
-        let mut ctx = Context::new();
-        dialect_llvm::register(&mut ctx);
-        dialect_mir::register(&mut ctx);
-        dialect_nvvm::register(&mut ctx);
-        crate::register(&mut ctx);
-        ctx
-    }
-
-    /// Build a module with one MirFuncOp `kernel_func` that takes the given
-    /// argument types and returns `()`. The function has a single empty
-    /// entry block; the caller appends ops (and a `mir.return`) before
-    /// running the lowering pass.
-    fn build_kernel(
-        ctx: &mut Context,
-        arg_tys: Vec<Ptr<TypeObj>>,
-    ) -> (Ptr<Operation>, Ptr<BasicBlock>) {
-        let module = ModuleOp::new(ctx, "test_module".try_into().unwrap());
-        let module_ptr = module.get_operation();
-
-        let func_ty = FunctionType::get(ctx, arg_tys.clone(), vec![]);
-        let func_op_ptr = Operation::new(
-            ctx,
-            mir::MirFuncOp::get_concrete_op_info(),
-            vec![],
-            vec![],
-            vec![],
-            1,
-        );
-        let func = mir::MirFuncOp::new(ctx, func_op_ptr, TypeAttr::new(func_ty.into()));
-        func.set_symbol_name(ctx, "kernel_func".try_into().unwrap());
-
-        let region = func.get_operation().deref(ctx).get_region(0);
-        let block = BasicBlock::new(ctx, None, arg_tys);
-        block.insert_at_back(region, ctx);
-
-        let module_region = module_ptr.deref(ctx).get_region(0);
-        let module_block = module_region.deref(ctx).iter(ctx).next().unwrap();
-        func.get_operation().insert_at_back(module_block, ctx);
-
-        (module_ptr, block)
-    }
-
-    fn append_return(ctx: &mut Context, block: Ptr<BasicBlock>) {
-        let op = Operation::new(
-            ctx,
-            mir::MirReturnOp::get_concrete_op_info(),
-            vec![],
-            vec![],
-            vec![],
-            0,
-        );
-        op.insert_at_back(block, ctx);
-    }
-
-    /// All blocks of `kernel_func` in the lowered module.
-    ///
-    /// `convert_func` builds a fresh `llvm.func` with a prologue entry block
-    /// (which reconstructs aggregate args and branches to the inlined MIR
-    /// region), so the lowered function generally has at least two blocks
-    /// and the converted memory ops live in the second one. Tests iterate
-    /// across all of them rather than picking a specific block.
-    fn kernel_blocks(ctx: &Context, module_ptr: Ptr<Operation>) -> Vec<Ptr<BasicBlock>> {
-        let module_op = module_ptr.deref(ctx);
-        let region = module_op.get_region(0);
-        let module_block = region.deref(ctx).iter(ctx).next().unwrap();
-        for op in module_block.deref(ctx).iter(ctx) {
-            let Some(func_op) = Operation::get_op::<llvm::FuncOp>(op, ctx) else {
-                continue;
-            };
-            if func_op.get_symbol_name(ctx).to_string() != "kernel_func" {
-                continue;
-            }
-            let func_region = func_op.get_operation().deref(ctx).get_region(0);
-            return func_region.deref(ctx).iter(ctx).collect();
-        }
-        panic!("kernel_func not found in lowered module");
-    }
-
-    fn module_top_block(ctx: &Context, module_ptr: Ptr<Operation>) -> Ptr<BasicBlock> {
-        module_ptr
-            .deref(ctx)
-            .get_region(0)
-            .deref(ctx)
-            .iter(ctx)
-            .next()
-            .unwrap()
-    }
-
-    fn count_ops<T: Op>(ctx: &Context, blocks: &[Ptr<BasicBlock>]) -> usize {
-        blocks
-            .iter()
-            .flat_map(|b| b.deref(ctx).iter(ctx).collect::<Vec<_>>())
-            .filter(|op| Operation::get_op::<T>(*op, ctx).is_some())
-            .count()
-    }
-
-    fn find_first<T: Op>(ctx: &Context, blocks: &[Ptr<BasicBlock>]) -> Option<T> {
-        blocks
-            .iter()
-            .flat_map(|b| b.deref(ctx).iter(ctx).collect::<Vec<_>>())
-            .find_map(|op| Operation::get_op::<T>(op, ctx))
-    }
 
     fn ptr_addrspace(ctx: &Context, ty: Ptr<TypeObj>) -> u32 {
         ty.deref(ctx)
@@ -828,7 +724,7 @@ mod tests {
         let i32_ty: Ptr<TypeObj> = IntegerType::get(&mut ctx, 32, Signedness::Signless).into();
         let mir_ptr_ty = MirPtrType::get_generic(&mut ctx, i32_ty, true);
 
-        let (module_ptr, block) = build_kernel(&mut ctx, vec![]);
+        let (module_ptr, block) = build_kernel(&mut ctx, vec![], vec![]);
 
         let alloca_op = Operation::new(
             &mut ctx,
@@ -839,7 +735,7 @@ mod tests {
             0,
         );
         alloca_op.insert_at_back(block, &ctx);
-        append_return(&mut ctx, block);
+        append_mir_return(&mut ctx, block, vec![]);
 
         crate::lower_mir_to_llvm(&mut ctx, module_ptr).expect("lowering failed");
 
@@ -862,7 +758,7 @@ mod tests {
         let mir_ptr_ty = MirPtrType::get_generic(&mut ctx, i32_ty, true);
 
         // Kernel takes (ptr, val) so we can store one into the other.
-        let (module_ptr, block) = build_kernel(&mut ctx, vec![mir_ptr_ty.into(), i32_ty]);
+        let (module_ptr, block) = build_kernel(&mut ctx, vec![mir_ptr_ty.into(), i32_ty], vec![]);
         let ptr_val = block.deref(&ctx).get_argument(0);
         let val = block.deref(&ctx).get_argument(1);
 
@@ -875,7 +771,7 @@ mod tests {
             0,
         );
         store_op.insert_at_back(block, &ctx);
-        append_return(&mut ctx, block);
+        append_mir_return(&mut ctx, block, vec![]);
 
         crate::lower_mir_to_llvm(&mut ctx, module_ptr).expect("lowering failed");
 
@@ -901,7 +797,7 @@ mod tests {
         let i32_ty: Ptr<TypeObj> = IntegerType::get(&mut ctx, 32, Signedness::Signless).into();
         let mir_ptr_ty = MirPtrType::get_generic(&mut ctx, i32_ty, false);
 
-        let (module_ptr, block) = build_kernel(&mut ctx, vec![mir_ptr_ty.into()]);
+        let (module_ptr, block) = build_kernel(&mut ctx, vec![mir_ptr_ty.into()], vec![]);
         let ptr_val = block.deref(&ctx).get_argument(0);
 
         let load_op = Operation::new(
@@ -913,7 +809,7 @@ mod tests {
             0,
         );
         load_op.insert_at_back(block, &ctx);
-        append_return(&mut ctx, block);
+        append_mir_return(&mut ctx, block, vec![]);
 
         crate::lower_mir_to_llvm(&mut ctx, module_ptr).expect("lowering failed");
 
@@ -929,7 +825,7 @@ mod tests {
         let mir_ptr_ty = MirPtrType::get_generic(&mut ctx, i32_ty, false);
 
         // Take a u32 by value, build `&x`.
-        let (module_ptr, block) = build_kernel(&mut ctx, vec![i32_ty]);
+        let (module_ptr, block) = build_kernel(&mut ctx, vec![i32_ty], vec![]);
         let arg = block.deref(&ctx).get_argument(0);
 
         let ref_op_ptr = Operation::new(
@@ -942,7 +838,7 @@ mod tests {
         );
         mir::MirRefOp::new(ref_op_ptr).set_mutable(&mut ctx, false);
         ref_op_ptr.insert_at_back(block, &ctx);
-        append_return(&mut ctx, block);
+        append_mir_return(&mut ctx, block, vec![]);
 
         crate::lower_mir_to_llvm(&mut ctx, module_ptr).expect("lowering failed");
 
@@ -967,7 +863,7 @@ mod tests {
         let i64_ty: Ptr<TypeObj> = IntegerType::get(&mut ctx, 64, Signedness::Signless).into();
         let mir_ptr_ty = MirPtrType::get_generic(&mut ctx, i32_ty, true);
 
-        let (module_ptr, block) = build_kernel(&mut ctx, vec![mir_ptr_ty.into(), i64_ty]);
+        let (module_ptr, block) = build_kernel(&mut ctx, vec![mir_ptr_ty.into(), i64_ty], vec![]);
         let ptr_val = block.deref(&ctx).get_argument(0);
         let off_val = block.deref(&ctx).get_argument(1);
 
@@ -980,7 +876,7 @@ mod tests {
             0,
         );
         off_op.insert_at_back(block, &ctx);
-        append_return(&mut ctx, block);
+        append_mir_return(&mut ctx, block, vec![]);
 
         crate::lower_mir_to_llvm(&mut ctx, module_ptr).expect("lowering failed");
 
@@ -1026,9 +922,9 @@ mod tests {
     #[test]
     fn convert_shared_alloc_creates_global_in_addrspace_3() {
         let mut ctx = make_ctx();
-        let (module_ptr, block) = build_kernel(&mut ctx, vec![]);
+        let (module_ptr, block) = build_kernel(&mut ctx, vec![], vec![]);
         append_shared_alloc(&mut ctx, block, "k1", 64);
-        append_return(&mut ctx, block);
+        append_mir_return(&mut ctx, block, vec![]);
 
         crate::lower_mir_to_llvm(&mut ctx, module_ptr).expect("lowering failed");
 
@@ -1071,7 +967,7 @@ mod tests {
     #[test]
     fn convert_shared_alloc_deduplicates_by_alloc_key() {
         let mut ctx = make_ctx();
-        let (module_ptr, block) = build_kernel(&mut ctx, vec![]);
+        let (module_ptr, block) = build_kernel(&mut ctx, vec![], vec![]);
         // Two allocations sharing the same alloc_key — they must collapse to
         // a single underlying global (this is what enables a single `static`
         // referenced from multiple sites to land in one shared region).
@@ -1079,7 +975,7 @@ mod tests {
         append_shared_alloc(&mut ctx, block, "same-key", 64);
         // A third with a different key must NOT dedupe with them.
         append_shared_alloc(&mut ctx, block, "other-key", 32);
-        append_return(&mut ctx, block);
+        append_mir_return(&mut ctx, block, vec![]);
 
         crate::lower_mir_to_llvm(&mut ctx, module_ptr).expect("lowering failed");
 
@@ -1129,10 +1025,10 @@ mod tests {
     #[test]
     fn convert_global_alloc_places_in_global_or_constant_addrspace() {
         let mut ctx = make_ctx();
-        let (module_ptr, block) = build_kernel(&mut ctx, vec![]);
+        let (module_ptr, block) = build_kernel(&mut ctx, vec![], vec![]);
         append_global_alloc(&mut ctx, block, "ordinary_static", false);
         append_global_alloc(&mut ctx, block, "_ZN7my_mod3KEYE", true);
-        append_return(&mut ctx, block);
+        append_mir_return(&mut ctx, block, vec![]);
 
         crate::lower_mir_to_llvm(&mut ctx, module_ptr).expect("lowering failed");
 
