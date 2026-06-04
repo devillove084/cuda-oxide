@@ -12,11 +12,11 @@
 //! The function-pointer pattern avoids the borrow-checker conflict between
 //! `type_cast` (borrows ctx immutably) and conversion (needs `&mut ctx`).
 
-use llvm_export::types as llvm_types;
 use dialect_mir::types::{
     MirArrayType, MirDisjointSliceType, MirEnumType, MirFP16Type, MirPtrType, MirSliceType,
     MirStructType, MirTupleType,
 };
+use llvm_export::types as llvm_types;
 use pliron::builtin::types::{FP32Type, FP64Type, IntegerType, Signedness};
 use pliron::derive::type_interface_impl;
 

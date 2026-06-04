@@ -26,8 +26,8 @@
 //! - [`translate_rvalue`]: Main entry point for rvalue translation
 //! - [`translate_operand`]: Translates operands (Copy/Move/Constant/RuntimeChecks)
 //! - [`translate_place`]: Translates places to their SSA values (handles ghost locals)
-//! - [`translate_constant`]: Translates MIR constants to `dialect-mir`
-//! - [`create_ghost_enum_default`]: Synthesises a placeholder for never-assigned enum locals
+//! - `translate_constant`: Translates MIR constants to `dialect-mir`
+//! - `create_ghost_enum_default`: Synthesises a placeholder for never-assigned enum locals
 
 use super::types;
 use crate::error::{TranslationErr, TranslationResult};
@@ -2401,7 +2401,7 @@ pub fn translate_operand(
 ///
 /// When such a local is still *used* within a block (e.g. `discriminant(_6)`)
 /// and happens to be an enum, we synthesise a variant-0 default via
-/// [`create_ghost_enum_default`]. Non-enum ghost locals currently produce an
+/// `create_ghost_enum_default`. Non-enum ghost locals currently produce an
 /// error -- extend this match if new patterns appear in future toolchains.
 ///
 /// This is the SSA equivalent of rustc's codegen reading an uninitialized

@@ -21,6 +21,16 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
+// The generated bindings carry CUDA's C doxygen comments verbatim. Those contain
+// `[...]` spans, bare URLs, HTML-ish tables, and `\brief`-style code that rustdoc
+// flags as broken intra-doc links, bare URLs, unclosed HTML tags, and unparseable
+// Rust code blocks. We keep the comments (they are useful API docs) but silence
+// these lints for this generated FFI crate; its doctests are excluded from the
+// `--doc` gate in CI.
+#![allow(rustdoc::broken_intra_doc_links)]
+#![allow(rustdoc::bare_urls)]
+#![allow(rustdoc::invalid_html_tags)]
+#![allow(rustdoc::invalid_rust_codeblocks)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 

@@ -35,7 +35,7 @@
 //!
 //! # Function Name Resolution
 //!
-//! [`extract_func_info`] uses `CrateDef::name()` which returns fully qualified
+//! `extract_func_info` uses `CrateDef::name()` which returns fully qualified
 //! names (FQDNs, e.g. `helper_fn::cuda_oxide_device_<hash>_vecadd`). This FQDN is
 //! used as both `pattern_name` (for intrinsic matching against paths like
 //! `cuda_device::thread::threadIdx_x`) and `call_name` (for non-generic calls).

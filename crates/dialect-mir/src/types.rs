@@ -301,7 +301,7 @@ pub struct MirStructType {
     pub field_names: Vec<String>,
     /// Field types in declaration order (parallel to field_names)
     pub field_types: Vec<Ptr<TypeObj>>,
-    /// Memory order mapping: mem_to_decl[mem_idx] = decl_idx.
+    /// Memory order mapping: `mem_to_decl[mem_idx] = decl_idx`.
     /// Empty means identity (no reordering).
     pub mem_to_decl: Vec<usize>,
     /// Byte offset of each field in declaration order (bytes).
@@ -541,14 +541,14 @@ impl EnumVariant {
 
 /// An enum type (algebraic data type with multiple variants).
 ///
-/// Represents Rust enums like Option<T>, Result<T,E>, and custom enums.
+/// Represents Rust enums like `Option<T>`, `Result<T,E>`, and custom enums.
 ///
 /// Memory layout follows Rust's enum representation:
 /// - Discriminant (integer type based on variant count)
 /// - Payload (union of all variant payloads, sized to largest)
 ///
 /// Note: For simplicity, we store variant info in flattened vectors
-/// since the #[format_type] macro has trouble with nested structs.
+/// since the `#[format_type]` macro has trouble with nested structs.
 ///
 /// # Verification
 /// * Must have at least one variant.
@@ -648,7 +648,7 @@ impl MirEnumType {
             .and_then(|idx| self.get_variant(idx))
     }
 
-    /// Check if this is Option<T> type.
+    /// Check if this is `Option<T>` type.
     pub fn is_option(&self) -> bool {
         self.name == "Option" && self.variant_names.len() == 2
     }

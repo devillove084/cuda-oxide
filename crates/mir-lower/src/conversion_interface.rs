@@ -25,7 +25,7 @@ use pliron::{
 /// `op_cast::<dyn MirToLlvmConversion>` instead of a manual if-chain over
 /// `OpId`.
 ///
-/// Called by [`DialectConversion::rewrite`] via `op_cast`-based dispatch.
+/// Called by `DialectConversion::rewrite` via `op_cast`-based dispatch.
 /// Each concrete op provides its own implementation (see
 /// `convert/interface_impls.rs`). The implementation should use `rewriter`
 /// to replace the current op with one or more LLVM dialect ops.

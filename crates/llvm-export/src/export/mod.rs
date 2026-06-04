@@ -25,16 +25,16 @@
 //!
 //! # Module Structure
 //!
-//! - [`config`] — backend configuration trait and built-in implementations
-//! - [`externs`] — device extern declaration types for FFI with external LTOIR
-//! - [`state`] — exporter state and kernel bookkeeping
-//! - [`names`] — value names, block labels, symbol normalization
-//! - [`module`] — module-level export flow
-//! - [`function`] — function and basic block emission
-//! - [`ops`] — operation emission
-//! - [`types`] — LLVM type printing
-//! - [`literals`] — constant/literal formatting
-//! - [`metadata`] — nvvm annotations and version, llvm.used
+//! - `config`: backend configuration trait and built-in implementations
+//! - `externs`: device extern declaration types for FFI with external LTOIR
+//! - `state`: exporter state and kernel bookkeeping
+//! - `names`: value names, block labels, symbol normalization
+//! - `module`: module-level export flow
+//! - `function`: function and basic block emission
+//! - `ops`: operation emission
+//! - `types`: LLVM type printing
+//! - `literals`: constant/literal formatting
+//! - `metadata`: nvvm annotations and version, llvm.used
 
 mod config;
 mod externs;

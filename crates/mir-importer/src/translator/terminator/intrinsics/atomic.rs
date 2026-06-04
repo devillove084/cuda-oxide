@@ -40,11 +40,11 @@
 //! | `fetch_and`  | `And`              | —              |
 //! | `fetch_or`   | `Or`               | —              |
 //! | `fetch_xor`  | `Xor`              | —              |
-//! | `fetch_min`  | `Min` / `UMin` [*] | —              |
-//! | `fetch_max`  | `Max` / `UMax` [*] | —              |
+//! | `fetch_min`  | `Min` / `UMin` `[*]` | —            |
+//! | `fetch_max`  | `Max` / `UMax` `[*]` | —            |
 //! | `swap`       | `Xchg`             | `Xchg`         |
 //!
-//! [*] `fetch_min`/`fetch_max` use signed (`Min`/`Max`) for `I32`/`I64`,
+//! `[*]` `fetch_min`/`fetch_max` use signed (`Min`/`Max`) for `I32`/`I64`,
 //!     unsigned (`UMin`/`UMax`) for `U32`/`U64`.
 //!
 //! # core::sync::atomic Path

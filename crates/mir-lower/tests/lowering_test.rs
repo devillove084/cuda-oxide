@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-use llvm_export::ops as llvm;
 use dialect_mir::ops as mir;
 use dialect_nvvm::ops as nvvm;
+use llvm_export::ops as llvm;
 use pliron::builtin::op_interfaces::{CallOpCallable, CallOpInterface, SymbolOpInterface};
 use pliron::builtin::ops::ModuleOp;
 use pliron::context::Context;
@@ -381,8 +381,8 @@ fn test_threadfence_system_lowers_to_inline_asm() -> Result<(), anyhow::Error> {
 /// and asserts the lowered `caller` body contains an `AddrSpaceCastOp`.
 #[test]
 fn addrspace_coercion_inserts_addrspacecast_at_call_site() -> Result<(), anyhow::Error> {
-    use llvm_export::ops::AddrSpaceCastOp;
     use dialect_mir::types::MirPtrType;
+    use llvm_export::ops::AddrSpaceCastOp;
     use pliron::basic_block::BasicBlock;
     use pliron::builtin::attributes::{StringAttr, TypeAttr};
     use pliron::builtin::types::{FunctionType, IntegerType, Signedness};

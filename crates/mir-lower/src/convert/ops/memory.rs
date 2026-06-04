@@ -50,10 +50,10 @@
 use crate::context::{DeviceGlobalsMap, DynamicSmemAlignmentMap, SharedGlobalsMap};
 use crate::convert::types::convert_type;
 use crate::helpers;
+use dialect_mir::types::MirPtrType;
 use llvm_export::ops as llvm;
 use llvm_export::ops::GlobalOpExt;
 use llvm_export::types::ArrayType;
-use dialect_mir::types::MirPtrType;
 use pliron::builtin::op_interfaces::SymbolOpInterface;
 use pliron::builtin::types::{IntegerType, Signedness};
 use pliron::context::{Context, Ptr};

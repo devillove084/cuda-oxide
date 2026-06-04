@@ -22,9 +22,9 @@
 //!
 //! Float constants (f32, f64) pass through unchanged.
 
-use llvm_export::ops as llvm;
 use dialect_mir::attributes::MirFP16Attr;
 use dialect_mir::ops::{MirConstantOp, MirFloatConstantOp, MirUndefOp};
+use llvm_export::ops as llvm;
 use pliron::builtin::types::{IntegerType, Signedness};
 use pliron::context::{Context, Ptr};
 use pliron::irbuild::dialect_conversion::{DialectConversionRewriter, OperandsInfo};
@@ -109,10 +109,9 @@ pub(crate) fn convert_float(
     };
 
     let llvm_const = match float_attr {
-        FloatAttr::F16(attr) => llvm::ConstantOp::new(
-            ctx,
-            llvm_export::fp16_attr_from_bits(attr.to_bits()).into(),
-        ),
+        FloatAttr::F16(attr) => {
+            llvm::ConstantOp::new(ctx, llvm_export::fp16_attr_from_bits(attr.to_bits()).into())
+        }
         FloatAttr::F32(attr) => llvm::ConstantOp::new(ctx, attr.into()),
         FloatAttr::F64(attr) => llvm::ConstantOp::new(ctx, attr.into()),
     };

@@ -60,7 +60,7 @@ pub enum Index2D<const ROW_STRIDE: usize> {}
 /// is a runtime value the type system can't see; reach for the unsafe
 /// [`index_2d_runtime`] when you need a runtime stride.
 ///
-/// Used by [`DisjointSlice::get_mut_indexed`] to mint the per-thread index
+/// Used by `DisjointSlice::get_mut_indexed` to mint the per-thread index
 /// in the same call that resolves it to a mutable reference.
 pub trait IndexFormula: Sized {
     #[doc(hidden)]
@@ -339,7 +339,7 @@ pub mod __internal {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// let idx = index_1d();
 /// let i = idx.get();
 /// if let Some(c_elem) = c.get_mut(idx) {
@@ -408,7 +408,7 @@ pub fn index_1d<'kernel>() -> ThreadIndex<'kernel> {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// // GEMM: C[row, col] = ...
 /// let row = index_2d_row();
 /// let col = index_2d_col();
@@ -598,7 +598,7 @@ pub fn gridDim_z() -> u32 {
 ///
 /// # Usage
 ///
-/// ```rust
+/// ```rust,ignore
 /// use cuda_device::thread;
 ///
 /// // Write to shared memory

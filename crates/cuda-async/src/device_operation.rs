@@ -519,7 +519,7 @@ impl<O: Send, DO: DeviceOperation<Output = O>, F: FnOnce() -> DO> IntoFuture for
 /// Pair combinator: executes two operations sequentially on the same stream
 /// and returns both results as a tuple.
 ///
-/// Constructed via [`_zip`] or the [`zip!`] macro.
+/// Constructed via `_zip` or the [`zip!`] macro.
 pub struct Zip<T1: Send, T2: Send, A: DeviceOperation<Output = T1>, B: DeviceOperation<Output = T2>>
 {
     phantom: PhantomData<(T1, T2)>,

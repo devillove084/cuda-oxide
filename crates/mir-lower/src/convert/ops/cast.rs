@@ -54,12 +54,12 @@
 
 use crate::convert::types::convert_type;
 use crate::helpers;
-use llvm_export::op_interfaces::CastOpInterface;
-use llvm_export::ops as llvm;
-use llvm_export::types::FuncType;
 use dialect_mir::attributes::MirCastKindAttr;
 use dialect_mir::ops::MirCastOp;
 use dialect_mir::types::{MirArrayType, MirPtrType};
+use llvm_export::op_interfaces::CastOpInterface;
+use llvm_export::ops as llvm;
+use llvm_export::types::FuncType;
 use pliron::builtin::op_interfaces::CallOpCallable;
 use pliron::builtin::type_interfaces::FloatTypeInterface;
 use pliron::builtin::types::{IntegerType, Signedness};

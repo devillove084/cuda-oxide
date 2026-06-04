@@ -32,9 +32,9 @@ use crate::convert::types::{
     convert_function_type, convert_type, is_kernel_func, is_zero_sized_type,
 };
 
-use llvm_export::ops as llvm;
 use dialect_mir::ops::MirFuncOp;
 use dialect_mir::types::{MirDisjointSliceType, MirSliceType, MirStructType};
+use llvm_export::ops as llvm;
 use pliron::{
     basic_block::BasicBlock,
     builtin::op_interfaces::SymbolOpInterface,
@@ -58,7 +58,7 @@ use pliron::{
 
 /// Convert a `MirFuncOp` to `llvm.func` using pliron's `inline_region`.
 ///
-/// Called from [`crate::MirToLlvmConversionDriver::rewrite`] when the
+/// Called from `crate::MirToLlvmConversionDriver::rewrite` when the
 /// framework encounters a `MirFuncOp`. Creates a new LLVM function,
 /// propagates kernel attributes, moves the MIR body via `inline_region`,
 /// and builds an entry prologue to reconstruct aggregate arguments.

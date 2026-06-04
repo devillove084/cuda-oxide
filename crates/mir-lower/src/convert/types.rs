@@ -86,9 +86,9 @@
 //!
 //! This matches the C ABI for GPU kernels.
 
+use dialect_mir::types::{MirDisjointSliceType, MirSliceType, MirStructType};
 use llvm_export::types as llvm_types;
 use llvm_export::types::PointerTypeExt;
-use dialect_mir::types::{MirDisjointSliceType, MirSliceType, MirStructType};
 use pliron::builtin::type_interfaces::FunctionTypeInterface;
 use pliron::builtin::types::{FP32Type, FP64Type, FunctionType, IntegerType, Signedness};
 use pliron::context::{Context, Ptr};

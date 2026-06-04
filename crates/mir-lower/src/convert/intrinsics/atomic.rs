@@ -17,10 +17,10 @@
 //! |-------------------------|------------------------------------------|
 //! | `NvvmAtomicLoadOp`      | `load atomic ... syncscope("device")`    |
 //! | `NvvmAtomicStoreOp`     | `store atomic ... syncscope("device")`   |
-//! | `NvvmAtomicRmwOp`       | `atomicrmw ... syncscope("device")` [*]  |
+//! | `NvvmAtomicRmwOp`       | `atomicrmw ... syncscope("device")` `[*]`  |
 //! | `NvvmAtomicCmpxchgOp`   | `cmpxchg ... syncscope("device")`        |
 //!
-//! [*] atomicrmw uses fence splitting workaround -- see below.
+//! `[*]` atomicrmw uses fence splitting workaround -- see below.
 //!
 //! # atomicrmw Fence Splitting Workaround
 //!
@@ -47,13 +47,13 @@
 
 use crate::convert::types::convert_type;
 
-use llvm_export::attributes::{LlvmAtomicOrdering, LlvmAtomicRmwKind, LlvmSyncScope};
-use llvm_export::ops as llvm;
 use dialect_nvvm::ops::atomic::{
     AtomicOrdering as NvvmOrdering, AtomicRmwKind as NvvmRmwKind, AtomicScope as NvvmScope,
     NvvmAtomicCmpxchgOp, NvvmAtomicLoadOp, NvvmAtomicOpInterface, NvvmAtomicRmwOp,
     NvvmAtomicStoreOp,
 };
+use llvm_export::attributes::{LlvmAtomicOrdering, LlvmAtomicRmwKind, LlvmSyncScope};
+use llvm_export::ops as llvm;
 
 use pliron::context::{Context, Ptr};
 use pliron::irbuild::dialect_conversion::{DialectConversionRewriter, OperandsInfo};
