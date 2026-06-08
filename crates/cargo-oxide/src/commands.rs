@@ -1296,12 +1296,15 @@ fn apply_output_mode(cmd: &mut Command, emit_nvvm_ir: bool, arch: Option<&str>) 
 /// 1. `--arch <sm_XX>`            — explicit user override
 /// 2. `CUDA_OXIDE_TARGET=<sm_XX>` — explicit env override (set in the parent
 ///    process before invoking `cargo oxide run`)
-/// 3. **This function** — host GPU compute capability of CUDA device 0
+/// 3. **This function** — host GPU compute capability of CUDA device 0;
+///    emits the arch-specific `sm_XYa` form for cc ≥ 9.0 (so the backend
+///    can lower WGMMA / tcgen05 / TMA-multicast on the actual host) and the
+///    plain `sm_XY` form for cc < 9.0.
 /// 4. Backend feature-based default (`select_target` in
 ///    `mir-importer::pipeline`), which picks the minimum `sm_XX` required by
-///    the IR shape (e.g. `Basic → sm_80`, `Cluster → sm_90`, `Tma → sm_100`)
+///    the IR shape (e.g. `Basic → sm_80`, `Cluster → sm_90`, `Tma → sm_100`).
 ///
-/// This function returns `Some(sm_XY)` to fill slot 3, or `None` (falling
+/// This function returns `Some(sm_XY[a])` to fill slot 3, or `None` (falling
 /// through to slot 4) when the host has no usable GPU.
 ///
 /// # Why only `run`
@@ -1341,12 +1344,38 @@ fn detect_run_target_arch(arch: Option<&str>, emit_nvvm_ir: bool) -> Option<Stri
 }
 
 /// Format a `(major, minor)` compute-capability tuple as the `sm_XX` /
-/// `sm_XXX` string the codegen backend expects on `CUDA_OXIDE_TARGET`.
+/// `sm_XXX[a]` string the codegen backend expects on `CUDA_OXIDE_TARGET`.
 ///
 /// Concatenates without a separator, matching CUDA conventions:
-/// `(7, 5)` → `"sm_75"`, `(12, 0)` → `"sm_120"`.
+/// `(7, 5)` → `"sm_75"`, `(12, 0)` → `"sm_120a"`.
+///
+/// # Arch-specific (`a`) suffix
+///
+/// Compute capability ≥ 9.0 always has an arch-specific PTX target (`sm_90a`,
+/// `sm_100a`, `sm_103a`, `sm_120a`, …) that is a strict superset of the plain
+/// target on that chip. The `a` form is what unlocks WGMMA on Hopper and
+/// `tcgen05` / TMA multicast / `cta_group::*` on Blackwell datacenter — and
+/// every chip that reports cc ≥ 9.0 *is* the `a`-variant chip in NVIDIA's
+/// lineup (there is no consumer Hopper, no non-`a` sm_100, and so on).
+///
+/// This helper is only used by [`detect_run_target_arch`] in `cargo oxide
+/// run`, where the host GPU is known exactly and no cross-compile is in
+/// flight. Emitting the `a` form there:
+///
+/// - **No false negatives:** kernels that need `tcgen05` / WGMMA compile and
+///   load on the host (was: silent fallback to `sm_100` / `sm_90` and a
+///   `ptxas: 'tcgen05.alloc' not supported on .target 'sm_100'` failure).
+/// - **No false positives:** cc < 9.0 keeps the plain `sm_XY` form, since
+///   there is no `sm_80a` / `sm_86a` / `sm_89a` target in the PTX ISA.
+/// - **Strict superset:** PTX targeting `sm_XYa` accepts every kernel that
+///   would have compiled for plain `sm_XY`; the `a` form only permits
+///   *additional* arch-specific intrinsics.
 fn format_sm_arch((major, minor): (i32, i32)) -> String {
-    format!("sm_{}{}", major, minor)
+    if major >= 9 {
+        format!("sm_{}{}a", major, minor)
+    } else {
+        format!("sm_{}{}", major, minor)
+    }
 }
 
 /// Forward an env var to the child process if it's set in the parent, otherwise remove it.
@@ -1758,12 +1787,25 @@ mod tests {
 
     #[test]
     fn format_sm_arch_uses_cuda_target_spelling() {
+        // cc < 9.0 — no arch-specific target exists in the PTX ISA, so we
+        // emit the plain `sm_XY` form. Confirms we do not produce false
+        // positives like `sm_75a` / `sm_80a` / `sm_89a`.
+        assert_eq!(format_sm_arch((7, 0)), "sm_70");
         assert_eq!(format_sm_arch((7, 5)), "sm_75");
-        assert_eq!(format_sm_arch((12, 0)), "sm_120");
-        // sm_90a / sm_100a etc. are not produced by this helper because
-        // compute_capability() returns plain integers; the `a` suffix is
-        // applied by the backend's feature selector when arch-specific
-        // tcgen05 / wgmma intrinsics are used.
+        assert_eq!(format_sm_arch((8, 0)), "sm_80");
+        assert_eq!(format_sm_arch((8, 6)), "sm_86");
+        assert_eq!(format_sm_arch((8, 9)), "sm_89");
+
+        // cc ≥ 9.0 — every chip that reports this CC is an arch-specific
+        // (`a`) variant. Auto-detect emits the `a` form so the codegen
+        // backend can lower WGMMA / tcgen05 / TMA-multicast / cta_group
+        // intrinsics without falling through to a plain target that ptxas
+        // would reject. Confirms we do not produce false negatives.
+        assert_eq!(format_sm_arch((9, 0)), "sm_90a"); // Hopper (H100/H200)
+        assert_eq!(format_sm_arch((10, 0)), "sm_100a"); // Blackwell DC
+        assert_eq!(format_sm_arch((10, 1)), "sm_101a");
+        assert_eq!(format_sm_arch((10, 3)), "sm_103a");
+        assert_eq!(format_sm_arch((12, 0)), "sm_120a"); // consumer Blackwell
     }
 
     #[test]
