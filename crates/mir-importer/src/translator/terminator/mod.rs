@@ -1170,6 +1170,25 @@ fn translate_call(
         );
     }
 
+    // The collector skips the entire `libm` crate: every libm call must be
+    // intercepted by the float-math dispatch above and rerouted to a
+    // libdevice intrinsic, so no definition for a libm symbol ever exists in
+    // the module. A libm function the dispatch does not recognize would only
+    // fail much later, as a bare "Symbol libm__cbrtf not found" verifier
+    // error on the LLVM dialect module. Fail here instead, with the
+    // function's name and source location.
+    if let Some(ref name) = pattern_name
+        && intrinsics::float_math::is_libm_path(name)
+    {
+        return input_err!(
+            loc,
+            TranslationErr::unsupported(format!(
+                "libm function `{name}` is not yet mapped to a libdevice intrinsic; \
+                 add it to `from_libm_path` in the mir-importer float-math dispatch"
+            ))
+        );
+    }
+
     // Not an intrinsic - emit regular function call
     let raw_name = call_name.unwrap_or_else(|| "unknown_function".to_string());
     let legal_name = legaliser.legalise(&raw_name);
@@ -1652,6 +1671,22 @@ fn try_dispatch_intrinsic(
             ctx,
             body,
             intrinsic,
+            args,
+            destination,
+            target,
+            block_ptr,
+            prev_op,
+            value_map,
+            block_map,
+            loc,
+        )?));
+    }
+
+    if let Some(is_f64) = intrinsics::float_math::libm_sincos_is_f64(name) {
+        return Ok(Some(intrinsics::float_math::emit_sincos(
+            ctx,
+            body,
+            is_f64,
             args,
             destination,
             target,
