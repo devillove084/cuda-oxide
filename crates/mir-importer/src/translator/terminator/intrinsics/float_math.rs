@@ -194,7 +194,7 @@ impl RustFloatMathIntrinsic {
     /// segment so both the canonical (`libm::math::sqrt::sqrtf`) and re-exported
     /// (`libm::sqrtf`) spellings are caught.
     fn from_libm_path(name: &str) -> Option<Self> {
-        if !name.contains("libm") {
+        if !is_libm_path(name) {
             return None;
         }
         let seg = name.rsplit("::").next().unwrap_or(name);
@@ -295,12 +295,21 @@ impl RustFloatMathIntrinsic {
     }
 }
 
+/// Whether `name` is a path rooted in the `libm` crate: the first path
+/// segment must be exactly `libm`. A bare substring test would also match
+/// user functions whose path merely mentions libm (e.g.
+/// `my_app::libm_compat::expf`), silently replacing the user's body with a
+/// libdevice call.
+pub fn is_libm_path(name: &str) -> bool {
+    name.split("::").next() == Some("libm")
+}
+
 /// Recognize `libm::sincosf` / `libm::sincos` (glam's `nostd-libm` lowering of
 /// `f32::sin_cos`). These return a `(sin, cos)` tuple, so they do not fit the
 /// scalar `RustFloatMathIntrinsic` dispatch; [`emit_sincos`] handles them.
 /// Returns `Some(is_f64)` when `name` is a libm sincos function.
 pub fn libm_sincos_is_f64(name: &str) -> Option<bool> {
-    if !name.contains("libm") {
+    if !is_libm_path(name) {
         return None;
     }
     match name.rsplit("::").next().unwrap_or(name) {
@@ -523,6 +532,52 @@ mod tests {
             RustFloatMathIntrinsic::from_core_path("core::intrinsics::minimumf32"),
             None
         );
+    }
+
+    /// Libm interception must be anchored to the `libm` crate root. A user
+    /// function that shares a libm function name, inside a path that merely
+    /// mentions "libm", must stay a regular call: a bare `contains("libm")`
+    /// test rerouted such calls to libdevice, silently replacing the user's
+    /// body (miscompile caught in PR #142 review).
+    #[test]
+    fn libm_interception_is_anchored_to_the_libm_crate_root() {
+        // Canonical and re-exported libm spellings are intercepted.
+        for (path, expected) in [
+            ("libm::math::expf::expf", RustFloatMathIntrinsic::ExpF32),
+            ("libm::expf", RustFloatMathIntrinsic::ExpF32),
+            ("libm::math::sqrt::sqrt", RustFloatMathIntrinsic::SqrtF64),
+        ] {
+            assert_eq!(
+                RustFloatMathIntrinsic::from_core_path(path),
+                Some(expected),
+                "`{path}` should be intercepted as a libm function"
+            );
+        }
+
+        // Adversarial: a user `expf` under a path containing "libm" is NOT
+        // the libm crate and must not be rerouted.
+        for path in [
+            "my_app::libm_compat::expf",
+            "my_app::libm::expf",
+            "libmath::expf",
+            "libm_math::lookalike::expf",
+            "not_libm::expf",
+        ] {
+            assert_eq!(
+                RustFloatMathIntrinsic::from_core_path(path),
+                None,
+                "user function `{path}` was wrongly rerouted to libdevice"
+            );
+        }
+    }
+
+    /// Same anchoring requirement for the tuple-returning sincos detector.
+    #[test]
+    fn libm_sincos_detection_is_anchored_to_the_libm_crate_root() {
+        assert_eq!(libm_sincos_is_f64("libm::sincosf"), Some(false));
+        assert_eq!(libm_sincos_is_f64("libm::math::sincos::sincos"), Some(true));
+        assert_eq!(libm_sincos_is_f64("my_app::libm_compat::sincosf"), None);
+        assert_eq!(libm_sincos_is_f64("libmath::sincos"), None);
     }
 
     #[test]
