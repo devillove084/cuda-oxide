@@ -21,6 +21,8 @@
 //! ```
 
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::num::Wrapping;
 use std::sync::Arc;
 
 use cuda_bindings::CUdeviceptr;
@@ -81,6 +83,15 @@ impl_device_copy!(
 unsafe impl<T: DeviceCopy, const N: usize> DeviceCopy for [T; N] {}
 unsafe impl<T: ?Sized> DeviceCopy for *const T {}
 unsafe impl<T: ?Sized> DeviceCopy for *mut T {}
+
+// Wrapper types that don't change the byte representation: a value of the
+// wrapper has the same layout and validity invariants as the inner `T`.
+// `PhantomData<T>` is a zero-sized marker -- always trivially copyable
+// regardless of `T`. `MaybeUninit<T>` accepts any bit pattern by design.
+// `Wrapping<T>` is a `#[repr(transparent)]` newtype.
+unsafe impl<T: ?Sized> DeviceCopy for PhantomData<T> {}
+unsafe impl<T: DeviceCopy> DeviceCopy for MaybeUninit<T> {}
+unsafe impl<T: DeviceCopy> DeviceCopy for Wrapping<T> {}
 
 macro_rules! impl_device_copy_tuple {
     ($($name:ident),+ $(,)?) => {
