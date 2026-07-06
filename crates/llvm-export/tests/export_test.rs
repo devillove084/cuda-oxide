@@ -2633,3 +2633,258 @@ fn export_emits_fast_math_flags_only_on_flagged_float_ops() {
         "a float binop with no fast-math flags must not gain them:\n{ir}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// FP8 / BFloat16 DeviceExternType tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn device_extern_fp8_types_emit_as_i8() {
+    assert_eq!(
+        DeviceExternType::Float8E4M3
+            .llvm_string(false)
+            .expect("Float8E4M3 must be representable"),
+        "i8"
+    );
+    assert_eq!(
+        DeviceExternType::Float8E5M2
+            .llvm_string(false)
+            .expect("Float8E5M2 must be representable"),
+        "i8"
+    );
+}
+
+#[test]
+fn device_extern_bfloat16_emits_as_i16() {
+    assert_eq!(
+        DeviceExternType::BFloat16
+            .llvm_string(false)
+            .expect("BFloat16 must be representable"),
+        "i16"
+    );
+}
+
+#[test]
+fn device_extern_fp8_legacy_typed_pointer_emits_as_i8() {
+    let ptr_fp8 = DeviceExternType::pointer_to(DeviceExternType::Float8E4M3, 0);
+    assert_eq!(
+        ptr_fp8
+            .llvm_string(true)
+            .expect("FP8 pointer must be representable"),
+        "i8*"
+    );
+
+    let ptr_fp8_as3 = DeviceExternType::pointer_to(DeviceExternType::Float8E5M2, 3);
+    assert_eq!(
+        ptr_fp8_as3
+            .llvm_string(true)
+            .expect("FP8 shared pointer must be representable"),
+        "i8 addrspace(3)*"
+    );
+}
+
+#[test]
+fn device_extern_bfloat16_legacy_typed_pointer_emits_as_i16() {
+    let ptr_bf16 = DeviceExternType::pointer_to(DeviceExternType::BFloat16, 0);
+    assert_eq!(
+        ptr_bf16
+            .llvm_string(true)
+            .expect("BF16 pointer must be representable"),
+        "i16*"
+    );
+}
+
+#[test]
+fn device_extern_fp8_extern_declaration_exports_correctly() {
+    let mut ctx = Context::new();
+    let module = ModuleOp::new(&mut ctx, "fp8_test".try_into().unwrap());
+    let module_block = module_top_block(&mut ctx, &module);
+
+    let i8_ty = IntegerType::get(&ctx, 8, Signedness::Signless);
+    let void_ty = VoidType::get(&ctx);
+    let external_ty = FuncType::get(&ctx, void_ty.into(), vec![i8_ty.into()], false);
+    FuncOp::new(&mut ctx, "consume_fp8".try_into().unwrap(), external_ty)
+        .get_operation()
+        .insert_at_back(module_block, &ctx);
+
+    let caller_ty = FuncType::get(&ctx, void_ty.into(), vec![i8_ty.into()], false);
+    let caller = FuncOp::new(&mut ctx, "caller".try_into().unwrap(), caller_ty);
+    let entry = caller.get_or_create_entry_block(&mut ctx);
+    let val = entry.deref(&ctx).get_argument(0);
+    CallOp::new(
+        &mut ctx,
+        CallOpCallable::Direct("consume_fp8".try_into().unwrap()),
+        external_ty,
+        vec![val],
+    )
+    .get_operation()
+    .insert_at_back(entry, &ctx);
+    ReturnOp::new(&mut ctx, None)
+        .get_operation()
+        .insert_at_back(entry, &ctx);
+    caller.get_operation().insert_at_back(module_block, &ctx);
+
+    let externs = [DeviceExternDecl {
+        export_name: "consume_fp8".to_string(),
+        param_types: vec![DeviceExternType::Float8E4M3],
+        return_type: DeviceExternType::Void,
+        attrs: DeviceExternAttrs::default(),
+    }];
+
+    // Modern opaque-pointer dialect: FP8 is i8, no pointee types.
+    let ir = export_module_with_externs(
+        &ctx,
+        &module,
+        &externs,
+        &NvvmExportConfig::new(NvvmIrDialect::Modern),
+    )
+    .expect("FP8 extern must export in modern mode");
+    assert!(ir.contains("declare void @consume_fp8(i8)"), "{ir}");
+
+    // Legacy dialect: i8 is fine (no special half restriction).
+    let legacy = export_module_with_externs(
+        &ctx,
+        &module,
+        &externs,
+        &NvvmExportConfig::new(NvvmIrDialect::LegacyLlvm7),
+    )
+    .expect("FP8 extern must export in legacy mode");
+    assert!(legacy.contains("declare void @consume_fp8(i8)"), "{legacy}");
+}
+
+#[test]
+fn device_extern_bfloat16_extern_declaration_exports_correctly() {
+    let mut ctx = Context::new();
+    let module = ModuleOp::new(&mut ctx, "bf16_test".try_into().unwrap());
+    let module_block = module_top_block(&mut ctx, &module);
+
+    let i16_ty = IntegerType::get(&ctx, 16, Signedness::Signless);
+    let void_ty = VoidType::get(&ctx);
+    let external_ty = FuncType::get(&ctx, void_ty.into(), vec![i16_ty.into()], false);
+    FuncOp::new(&mut ctx, "process_bf16".try_into().unwrap(), external_ty)
+        .get_operation()
+        .insert_at_back(module_block, &ctx);
+
+    let caller_ty = FuncType::get(&ctx, void_ty.into(), vec![i16_ty.into()], false);
+    let caller = FuncOp::new(&mut ctx, "caller".try_into().unwrap(), caller_ty);
+    let entry = caller.get_or_create_entry_block(&mut ctx);
+    let val = entry.deref(&ctx).get_argument(0);
+    CallOp::new(
+        &mut ctx,
+        CallOpCallable::Direct("process_bf16".try_into().unwrap()),
+        external_ty,
+        vec![val],
+    )
+    .get_operation()
+    .insert_at_back(entry, &ctx);
+    ReturnOp::new(&mut ctx, None)
+        .get_operation()
+        .insert_at_back(entry, &ctx);
+    caller.get_operation().insert_at_back(module_block, &ctx);
+
+    let externs = [DeviceExternDecl {
+        export_name: "process_bf16".to_string(),
+        param_types: vec![DeviceExternType::BFloat16],
+        return_type: DeviceExternType::Void,
+        attrs: DeviceExternAttrs::default(),
+    }];
+
+    let ir = export_module_with_externs(
+        &ctx,
+        &module,
+        &externs,
+        &NvvmExportConfig::new(NvvmIrDialect::Modern),
+    )
+    .expect("BFloat16 extern must export");
+    assert!(ir.contains("declare void @process_bf16(i16)"), "{ir}");
+}
+
+#[test]
+fn device_extern_fp8_rejects_type_mismatch() {
+    let mut ctx = Context::new();
+    let module = ModuleOp::new(&mut ctx, "fp8_mismatch".try_into().unwrap());
+    let module_block = module_top_block(&mut ctx, &module);
+
+    let f32_ty = FP32Type::get(&ctx);
+    let void_ty = VoidType::get(&ctx);
+    let external_ty = FuncType::get(&ctx, void_ty.into(), vec![f32_ty.into()], false);
+    FuncOp::new(&mut ctx, "float_consumer".try_into().unwrap(), external_ty)
+        .get_operation()
+        .insert_at_back(module_block, &ctx);
+
+    let caller_ty = FuncType::get(&ctx, void_ty.into(), vec![f32_ty.into()], false);
+    let caller = FuncOp::new(&mut ctx, "caller".try_into().unwrap(), caller_ty);
+    let entry = caller.get_or_create_entry_block(&mut ctx);
+    let val = entry.deref(&ctx).get_argument(0);
+    CallOp::new(
+        &mut ctx,
+        CallOpCallable::Direct("float_consumer".try_into().unwrap()),
+        external_ty,
+        vec![val],
+    )
+    .get_operation()
+    .insert_at_back(entry, &ctx);
+    ReturnOp::new(&mut ctx, None)
+        .get_operation()
+        .insert_at_back(entry, &ctx);
+    caller.get_operation().insert_at_back(module_block, &ctx);
+
+    let externs = [DeviceExternDecl {
+        export_name: "float_consumer".to_string(),
+        param_types: vec![DeviceExternType::Float8E4M3],
+        return_type: DeviceExternType::Void,
+        attrs: DeviceExternAttrs::default(),
+    }];
+    let err = export_module_with_externs(
+        &ctx,
+        &module,
+        &externs,
+        &NvvmExportConfig::new(NvvmIrDialect::Modern),
+    )
+    .expect_err("FP8 vs f32 type mismatch must be rejected");
+    assert!(
+        err.contains("does not match"),
+        "must report type mismatch: {err}"
+    );
+}
+
+#[test]
+fn device_extern_fp8_roundtrips_through_pliron_conversion() {
+    for (ty, expected_llvm) in [
+        (DeviceExternType::BFloat16, "i16"),
+        (DeviceExternType::Float8E4M3, "i8"),
+        (DeviceExternType::Float8E5M2, "i8"),
+    ] {
+        let llvm = ty
+            .llvm_string(false)
+            .unwrap_or_else(|e| panic!("{ty:?} must be renderable: {e}"));
+        assert_eq!(
+            llvm, expected_llvm,
+            "{ty:?} must render as `{expected_llvm}`"
+        );
+        let _ = ty;
+    }
+
+    // Smoke-test pointer + array wrappers around the new types.
+    for ty in [
+        DeviceExternType::BFloat16,
+        DeviceExternType::Float8E4M3,
+        DeviceExternType::Float8E5M2,
+    ] {
+        let ptr = DeviceExternType::pointer_to(ty.clone(), 0);
+        let ptr_str = ptr.llvm_string(false).expect("pointer must render");
+        assert_eq!(ptr_str, "ptr", "modern ptr for {ty:?}");
+
+        let arr = DeviceExternType::Array {
+            element: Box::new(ty.clone()),
+            len: 8,
+        };
+        let arr_str = arr.llvm_string(false).expect("array must render");
+        let expected_elem = match &ty {
+            DeviceExternType::BFloat16 => "i16",
+            DeviceExternType::Float8E4M3 | DeviceExternType::Float8E5M2 => "i8",
+            _ => unreachable!(),
+        };
+        assert_eq!(arr_str, format!("[8 x {expected_elem}]"), "array of {ty:?}");
+    }
+}
