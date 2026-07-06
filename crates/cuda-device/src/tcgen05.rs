@@ -649,6 +649,10 @@ pub enum Tcgen05ElementType {
     BF16 = 1,
     /// TF32 (TensorFloat-32) - only valid for .kind::tf32
     TF32 = 2,
+    /// FP8 E4M3 (4 exponent + 3 mantissa bits). Blackwell-native.
+    E4M3 = 3,
+    /// FP8 E5M2 (5 exponent + 2 mantissa bits). Blackwell-native.
+    E5M2 = 4,
 }
 
 /// Accumulator (output D) data type for tcgen05 MMA operations.
@@ -784,6 +788,30 @@ impl Tcgen05InstructionDescriptor {
         Self::builder()
             .shape(Tcgen05MmaShape::M128_N256)
             .element_type(Tcgen05ElementType::TF32)
+            .accumulator_type(Tcgen05AccumulatorType::F32)
+            .build()
+    }
+
+    /// Create descriptor for FP8 E4M3 MMA with default settings.
+    ///
+    /// Default: 128×256 shape, E4M3 inputs, F32 accumulator.
+    #[inline(always)]
+    pub const fn new_e4m3() -> Self {
+        Self::builder()
+            .shape(Tcgen05MmaShape::M128_N256)
+            .element_type(Tcgen05ElementType::E4M3)
+            .accumulator_type(Tcgen05AccumulatorType::F32)
+            .build()
+    }
+
+    /// Create descriptor for FP8 E5M2 MMA with default settings.
+    ///
+    /// Default: 128×256 shape, E5M2 inputs, F32 accumulator.
+    #[inline(always)]
+    pub const fn new_e5m2() -> Self {
+        Self::builder()
+            .shape(Tcgen05MmaShape::M128_N256)
+            .element_type(Tcgen05ElementType::E5M2)
             .accumulator_type(Tcgen05AccumulatorType::F32)
             .build()
     }
@@ -1533,6 +1561,56 @@ pub unsafe fn tcgen05_mma_ws_tf32(
 ) {
     let _ = (d_tmem, a_tmem, a_desc, b_desc, idesc, enable_d);
     unreachable!("tcgen05_mma_ws_tf32 called outside CUDA kernel context")
+}
+
+/// tcgen05 MMA with FP8 E4M3 inputs.
+///
+/// FP8 E4M3 (4-bit exponent, 3-bit mantissa) is a Blackwell-native format
+/// offering higher throughput than FP16 at reduced precision.
+///
+/// # PTX
+///
+/// ```ptx
+/// tcgen05.mma.ws.cta_group::1.kind::f16 [d-tmem], [a-tmem], a-desc, b-desc, idesc, enable-d;
+/// ```
+///
+/// # Safety
+///
+/// - All descriptors must be valid and properly initialized
+/// - Must be called from within a CUDA kernel context on sm_100a+
+#[inline(never)]
+pub unsafe fn tcgen05_mma_ws_e4m3(
+    d_tmem: u32,
+    a_tmem: u32,
+    a_desc: u64,
+    b_desc: u64,
+    idesc: u32,
+    enable_d: bool,
+) {
+    let _ = (d_tmem, a_tmem, a_desc, b_desc, idesc, enable_d);
+    unreachable!("tcgen05_mma_ws_e4m3 called outside CUDA kernel context")
+}
+
+/// tcgen05 MMA with FP8 E5M2 inputs.
+///
+/// FP8 E5M2 (5-bit exponent, 2-bit mantissa) offers a wider dynamic range
+/// than E4M3 at the cost of reduced precision.
+///
+/// # Safety
+///
+/// - All descriptors must be valid and properly initialized
+/// - Must be called from within a CUDA kernel context on sm_100a+
+#[inline(never)]
+pub unsafe fn tcgen05_mma_ws_e5m2(
+    d_tmem: u32,
+    a_tmem: u32,
+    a_desc: u64,
+    b_desc: u64,
+    idesc: u32,
+    enable_d: bool,
+) {
+    let _ = (d_tmem, a_tmem, a_desc, b_desc, idesc, enable_d);
+    unreachable!("tcgen05_mma_ws_e5m2 called outside CUDA kernel context")
 }
 
 /// tcgen05 MMA with f16 inputs and collector buffer hint.

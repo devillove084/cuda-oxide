@@ -23,6 +23,15 @@
 //! let exec = graph.instantiate()?;
 //! exec.launch(&stream)?;
 //! ```
+//!
+//! # Manual construction
+//!
+//! ```ignore
+//! let graph = CudaGraph::new(&ctx)?;
+//! let kernel_node = graph.add_kernel_node(&[], &kernel_params)?;
+//! let exec = graph.instantiate()?;
+//! exec.launch(&stream)?;
+//! ```
 
 use crate::context::CudaContext;
 use crate::error::{DriverError, IntoResult};
@@ -35,16 +44,10 @@ use std::sync::Arc;
 // ---------------------------------------------------------------------------
 
 /// Controls how a stream capture sequence interacts with other API calls.
-///
-/// Mirrors the CUDA driver's `CUstreamCaptureMode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CaptureMode {
-    /// Default mode. Unsafe API calls are prohibited when any thread has an
-    /// ongoing non-relaxed capture sequence.
     Global,
-    /// Only the local thread's capture sequence restricts unsafe API calls.
     ThreadLocal,
-    /// The local thread is not restricted from potentially unsafe calls.
     Relaxed,
 }
 
@@ -79,21 +82,12 @@ impl CaptureMode {
 // CudaGraph
 // ---------------------------------------------------------------------------
 
-/// An RAII wrapper around a `CUgraph` handle.
-///
-/// Holds an `Arc<CudaContext>` to keep the context alive. Graphs are created
-/// via [`CudaGraph::new`] (empty graph for manual construction) or
-/// [`CudaStream::end_capture`].
 #[derive(Debug, PartialEq, Eq)]
 pub struct CudaGraph {
     pub(crate) cu_graph: cuda_bindings::CUgraph,
     pub(crate) ctx: Arc<CudaContext>,
 }
 
-/// # Safety
-///
-/// `CUgraph` handles are process-wide; the owning context is kept alive and
-/// bound before each driver call.
 unsafe impl Send for CudaGraph {}
 unsafe impl Sync for CudaGraph {}
 
@@ -108,8 +102,6 @@ impl Drop for CudaGraph {
 }
 
 impl CudaGraph {
-    /// Creates a new empty graph. Nodes and dependencies can be added
-    /// manually via the CUDA graph node API.
     pub fn new(ctx: &Arc<CudaContext>) -> Result<Self, DriverError> {
         ctx.bind_to_thread()?;
         let mut cu_graph = MaybeUninit::uninit();
@@ -122,15 +114,10 @@ impl CudaGraph {
         }
     }
 
-    /// Returns the raw `CUgraph` handle.
     pub fn cu_graph(&self) -> cuda_bindings::CUgraph {
         self.cu_graph
     }
 
-    /// Instantiates this graph into an executable form.
-    ///
-    /// The resulting [`CudaGraphExec`] can be launched repeatedly on any stream
-    /// with far less overhead than issuing individual operations.
     pub fn instantiate(&self) -> Result<CudaGraphExec, DriverError> {
         self.ctx.bind_to_thread()?;
         let mut cu_graph_exec = MaybeUninit::uninit();
@@ -138,7 +125,7 @@ impl CudaGraph {
             cuda_bindings::cuGraphInstantiateWithFlags(
                 cu_graph_exec.as_mut_ptr(),
                 self.cu_graph,
-                0, // flags: reserved, must be 0
+                0,
             )
             .result()?;
             Ok(CudaGraphExec {
@@ -147,27 +134,118 @@ impl CudaGraph {
             })
         }
     }
+
+    // -- Node construction --
+
+    pub fn add_kernel_node(
+        &self,
+        dependencies: &[&CudaGraphNode],
+        params: &KernelNodeParams,
+    ) -> Result<CudaGraphNode, DriverError> {
+        self.ctx.bind_to_thread()?;
+        let dep_nodes: Vec<cuda_bindings::CUgraphNode> =
+            dependencies.iter().map(|n| n.cu_node).collect();
+        let (mut ptrs, _buf) = params.to_raw();
+
+        let cu_params = cuda_bindings::CUDA_KERNEL_NODE_PARAMS {
+            func: params.func,
+            gridDimX: params.grid_dim.0,
+            gridDimY: params.grid_dim.1,
+            gridDimZ: params.grid_dim.2,
+            blockDimX: params.block_dim.0,
+            blockDimY: params.block_dim.1,
+            blockDimZ: params.block_dim.2,
+            sharedMemBytes: params.shared_mem_bytes,
+            kernelParams: ptrs.as_mut_ptr(),
+            extra: std::ptr::null_mut(),
+            kern: std::ptr::null_mut(),
+            ctx: std::ptr::null_mut(),
+        };
+
+        let mut cu_node = MaybeUninit::uninit();
+        unsafe {
+            cuda_bindings::cuGraphAddKernelNode_v2(
+                cu_node.as_mut_ptr(),
+                self.cu_graph,
+                if dep_nodes.is_empty() {
+                    std::ptr::null()
+                } else {
+                    dep_nodes.as_ptr()
+                },
+                dep_nodes.len(),
+                &cu_params,
+            )
+            .result()?;
+            Ok(CudaGraphNode {
+                cu_node: cu_node.assume_init(),
+                ctx: self.ctx.clone(),
+            })
+        }
+    }
+
+    pub fn add_empty_node(
+        &self,
+        dependencies: &[&CudaGraphNode],
+    ) -> Result<CudaGraphNode, DriverError> {
+        self.ctx.bind_to_thread()?;
+        let dep_nodes: Vec<cuda_bindings::CUgraphNode> =
+            dependencies.iter().map(|n| n.cu_node).collect();
+
+        let mut cu_node = MaybeUninit::uninit();
+        unsafe {
+            cuda_bindings::cuGraphAddEmptyNode(
+                cu_node.as_mut_ptr(),
+                self.cu_graph,
+                if dep_nodes.is_empty() {
+                    std::ptr::null()
+                } else {
+                    dep_nodes.as_ptr()
+                },
+                dep_nodes.len(),
+            )
+            .result()?;
+            Ok(CudaGraphNode {
+                cu_node: cu_node.assume_init(),
+                ctx: self.ctx.clone(),
+            })
+        }
+    }
+
+    pub fn add_dependencies(
+        &self,
+        from: &[&CudaGraphNode],
+        to: &[&CudaGraphNode],
+    ) -> Result<(), DriverError> {
+        self.ctx.bind_to_thread()?;
+        if from.is_empty() || to.is_empty() {
+            return Ok(());
+        }
+        let from_nodes: Vec<cuda_bindings::CUgraphNode> = from.iter().map(|n| n.cu_node).collect();
+        let to_nodes: Vec<cuda_bindings::CUgraphNode> = to.iter().map(|n| n.cu_node).collect();
+        let count = from.len().min(to.len());
+        unsafe {
+            cuda_bindings::cuGraphAddDependencies_v2(
+                self.cu_graph,
+                from_nodes.as_ptr(),
+                to_nodes.as_ptr(),
+                std::ptr::null(),
+                count,
+            )
+            .result()
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // CudaGraphExec
 // ---------------------------------------------------------------------------
 
-/// An executable (instantiated) CUDA graph.
-///
-/// Created by [`CudaGraph::instantiate`]. Can be launched on any stream
-/// via [`launch`](CudaGraphExec::launch) or uploaded to the device for
-/// faster repeated launches via [`upload`](CudaGraphExec::upload).
 #[derive(Debug, PartialEq, Eq)]
 pub struct CudaGraphExec {
     pub(crate) cu_graph_exec: cuda_bindings::CUgraphExec,
     pub(crate) ctx: Arc<CudaContext>,
 }
 
-/// # Safety
-///
-/// `CUgraphExec` handles are process-wide; the owning context is kept alive
-/// and bound before each driver call.
 unsafe impl Send for CudaGraphExec {}
 unsafe impl Sync for CudaGraphExec {}
 
@@ -183,57 +261,188 @@ impl Drop for CudaGraphExec {
 }
 
 impl CudaGraphExec {
-    /// Returns the raw `CUgraphExec` handle.
     pub fn cu_graph_exec(&self) -> cuda_bindings::CUgraphExec {
         self.cu_graph_exec
     }
 
-    /// Launches the executable graph on the given stream.
-    ///
-    /// Only one launch may be in flight at a time per executable graph.
-    /// The stream must belong to the same context as the graph.
     pub fn launch(&self, stream: &CudaStream) -> Result<(), DriverError> {
         self.ctx.bind_to_thread()?;
         unsafe { cuda_bindings::cuGraphLaunch(self.cu_graph_exec, stream.cu_stream()).result() }
     }
 
-    /// Uploads the executable graph to the device.
-    ///
-    /// Uploading can reduce launch latency for subsequent launches on
-    /// the same device. This is an asynchronous operation; the upload
-    /// completes on the device before the next graph launch.
     pub fn upload(&self, stream: &CudaStream) -> Result<(), DriverError> {
         self.ctx.bind_to_thread()?;
         unsafe { cuda_bindings::cuGraphUpload(self.cu_graph_exec, stream.cu_stream()).result() }
     }
+
+    // -- Update --
+
+    pub fn update(&self, updated_graph: &CudaGraph) -> Result<GraphUpdateResult, DriverError> {
+        self.ctx.bind_to_thread()?;
+        let mut result_info = cuda_bindings::CUgraphExecUpdateResultInfo {
+            result: cuda_bindings::CUgraphExecUpdateResult_enum_CU_GRAPH_EXEC_UPDATE_SUCCESS,
+            errorNode: std::ptr::null_mut(),
+            errorFromNode: std::ptr::null_mut(),
+        };
+        let cu_result = unsafe {
+            cuda_bindings::cuGraphExecUpdate_v2(
+                self.cu_graph_exec,
+                updated_graph.cu_graph,
+                &mut result_info,
+            )
+        };
+        if cu_result == 0 {
+            return Ok(GraphUpdateResult::Success);
+        }
+        Ok(match result_info.result {
+            cuda_bindings::CUgraphExecUpdateResult_enum_CU_GRAPH_EXEC_UPDATE_ERROR_TOPOLOGY_CHANGED => GraphUpdateResult::TopologyChanged,
+            cuda_bindings::CUgraphExecUpdateResult_enum_CU_GRAPH_EXEC_UPDATE_ERROR_NODE_TYPE_CHANGED => GraphUpdateResult::NodeTypeChanged,
+            cuda_bindings::CUgraphExecUpdateResult_enum_CU_GRAPH_EXEC_UPDATE_ERROR_FUNCTION_CHANGED => GraphUpdateResult::FunctionChanged,
+            cuda_bindings::CUgraphExecUpdateResult_enum_CU_GRAPH_EXEC_UPDATE_ERROR_PARAMETERS_CHANGED => GraphUpdateResult::ParameterChanged,
+            cuda_bindings::CUgraphExecUpdateResult_enum_CU_GRAPH_EXEC_UPDATE_ERROR_NOT_SUPPORTED => GraphUpdateResult::NotSupported,
+            _ => GraphUpdateResult::Unspecified,
+        })
+    }
+
+    pub fn set_kernel_node_params(
+        &self,
+        node: &CudaGraphNode,
+        params: &KernelNodeParams,
+    ) -> Result<(), DriverError> {
+        self.ctx.bind_to_thread()?;
+        let (mut ptrs, _buf) = params.to_raw();
+        let cu_params = cuda_bindings::CUDA_KERNEL_NODE_PARAMS {
+            func: params.func,
+            gridDimX: params.grid_dim.0,
+            gridDimY: params.grid_dim.1,
+            gridDimZ: params.grid_dim.2,
+            blockDimX: params.block_dim.0,
+            blockDimY: params.block_dim.1,
+            blockDimZ: params.block_dim.2,
+            sharedMemBytes: params.shared_mem_bytes,
+            kernelParams: ptrs.as_mut_ptr(),
+            extra: std::ptr::null_mut(),
+            kern: std::ptr::null_mut(),
+            ctx: std::ptr::null_mut(),
+        };
+        unsafe {
+            cuda_bindings::cuGraphExecKernelNodeSetParams_v2(
+                self.cu_graph_exec,
+                node.cu_node,
+                &cu_params,
+            )
+            .result()
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Stream capture methods (implemented on CudaStream via extension)
+// CudaGraphNode
 // ---------------------------------------------------------------------------
 
-/// Extension methods on [`CudaStream`] for graph capture.
-///
-/// These are defined as an extension trait rather than inherent methods to
-/// keep the stream module focused on core stream operations.
+#[derive(Debug, PartialEq, Eq)]
+pub struct CudaGraphNode {
+    pub(crate) cu_node: cuda_bindings::CUgraphNode,
+    pub(crate) ctx: Arc<CudaContext>,
+}
+
+unsafe impl Send for CudaGraphNode {}
+unsafe impl Sync for CudaGraphNode {}
+
+impl Drop for CudaGraphNode {
+    fn drop(&mut self) {
+        if !self.cu_node.is_null() {
+            self.ctx.record_err(self.ctx.bind_to_thread());
+            self.ctx
+                .record_err(unsafe { cuda_bindings::cuGraphDestroyNode(self.cu_node).result() });
+        }
+    }
+}
+
+impl CudaGraphNode {
+    pub fn cu_node(&self) -> cuda_bindings::CUgraphNode {
+        self.cu_node
+    }
+}
+
+// ---------------------------------------------------------------------------
+// KernelNodeParams
+// ---------------------------------------------------------------------------
+
+/// Parameters for a kernel launch node in a CUDA graph.
+pub struct KernelNodeParams {
+    pub func: cuda_bindings::CUfunction,
+    pub grid_dim: (u32, u32, u32),
+    pub block_dim: (u32, u32, u32),
+    pub shared_mem_bytes: u32,
+    kernel_params_bytes: Vec<u8>,
+    kernel_param_offsets: Vec<usize>,
+}
+
+impl KernelNodeParams {
+    pub fn new(
+        func: cuda_bindings::CUfunction,
+        grid: (u32, u32, u32),
+        block: (u32, u32, u32),
+        shared_mem: u32,
+    ) -> Self {
+        Self {
+            func,
+            grid_dim: grid,
+            block_dim: block,
+            shared_mem_bytes: shared_mem,
+            kernel_params_bytes: Vec::new(),
+            kernel_param_offsets: Vec::new(),
+        }
+    }
+
+    pub fn push_param<T: Copy + 'static>(&mut self, value: &T) {
+        let offset = self.kernel_params_bytes.len();
+        let align = std::mem::align_of::<T>();
+        let padding = (align - (offset % align)) % align;
+        self.kernel_params_bytes.resize(offset + padding, 0);
+        let aligned_offset = self.kernel_params_bytes.len();
+        let bytes = unsafe {
+            std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>())
+        };
+        self.kernel_params_bytes.extend_from_slice(bytes);
+        self.kernel_param_offsets.push(aligned_offset);
+    }
+
+    pub fn to_raw(&self) -> (Vec<*mut std::ffi::c_void>, Vec<u8>) {
+        let mut buf = self.kernel_params_bytes.clone();
+        let ptrs: Vec<*mut std::ffi::c_void> = self
+            .kernel_param_offsets
+            .iter()
+            .map(|&off| unsafe { buf.as_mut_ptr().add(off) as *mut std::ffi::c_void })
+            .collect();
+        (ptrs, buf)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GraphUpdateResult
+// ---------------------------------------------------------------------------
+
+/// Result of [`CudaGraphExec::update`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphUpdateResult {
+    Success,
+    TopologyChanged,
+    NodeTypeChanged,
+    FunctionChanged,
+    ParameterChanged,
+    NotSupported,
+    Unspecified,
+}
+
+// ---------------------------------------------------------------------------
+// Stream capture
+// ---------------------------------------------------------------------------
+
 pub trait CudaStreamCaptureExt {
-    /// Begins graph capture on this stream.
-    ///
-    /// All operations enqueued after this call are recorded into a graph
-    /// instead of being executed. Capture ends with
-    /// [`end_capture`](CudaStreamCaptureExt::end_capture).
-    ///
-    /// Cannot be called on the default stream (`CU_STREAM_LEGACY`).
     fn begin_capture(&self, mode: CaptureMode) -> Result<(), DriverError>;
-
-    /// Ends graph capture on this stream and returns the captured graph.
-    ///
-    /// Must be paired with a prior [`begin_capture`](CudaStreamCaptureExt::begin_capture)
-    /// on the same stream. If the mode was not [`CaptureMode::Relaxed`],
-    /// this must be called from the same thread as `begin_capture`.
     fn end_capture(&self) -> Result<CudaGraph, DriverError>;
-
-    /// Returns whether this stream is currently in an active capture sequence.
     fn is_capturing(&self) -> Result<bool, DriverError>;
 }
 
@@ -269,21 +478,6 @@ impl CudaStreamCaptureExt for CudaStream {
 // Thread capture mode control
 // ---------------------------------------------------------------------------
 
-/// Atomically swaps the calling thread's stream capture interaction mode.
-///
-/// This is a low-level primitive for controlling how the thread interacts
-/// with concurrent capture sequences. Returns the previous mode.
-///
-/// Prefer [`CaptureModeGuard`] for scoped mode changes that are
-/// automatically restored on drop.
-///
-/// # Example (push-pop pattern)
-///
-/// ```ignore
-/// let old = thread_exchange_capture_mode(CaptureMode::Relaxed)?;
-/// // ... do work that should not be restricted by capture ...
-/// thread_exchange_capture_mode(old)?;
-/// ```
 pub fn thread_exchange_capture_mode(mode: CaptureMode) -> Result<CaptureMode, DriverError> {
     let mut raw = mode.to_cuda();
     unsafe {
@@ -293,16 +487,11 @@ pub fn thread_exchange_capture_mode(mode: CaptureMode) -> Result<CaptureMode, Dr
         .ok_or_else(|| DriverError(cuda_bindings::cudaError_enum_CUDA_ERROR_INVALID_VALUE))
 }
 
-/// RAII guard that swaps the thread's capture mode on construction and
-/// restores the previous mode on drop. Errors during restoration are
-/// silently discarded (consistent with destructor semantics).
 pub struct CaptureModeGuard {
     prev: CaptureMode,
 }
 
 impl CaptureModeGuard {
-    /// Swaps the thread's capture mode to `mode` and returns a guard that
-    /// will restore the previous mode when dropped.
     pub fn new(mode: CaptureMode) -> Result<Self, DriverError> {
         let prev = thread_exchange_capture_mode(mode)?;
         Ok(Self { prev })

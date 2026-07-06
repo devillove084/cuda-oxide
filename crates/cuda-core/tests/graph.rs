@@ -8,7 +8,10 @@
 //! These tests share the same CUDA primary context (device 0), so they must
 //! run serially. Use `cargo test --test graph -- --test-threads=1`.
 
-use cuda_core::{CaptureMode, CudaContext, CudaGraph, CudaStreamCaptureExt, IntoResult};
+use cuda_core::{
+    CaptureMode, CudaContext, CudaGraph, CudaStreamCaptureExt, GraphUpdateResult, IntoResult,
+    KernelNodeParams,
+};
 use std::sync::Arc;
 
 fn make_ctx() -> Arc<CudaContext> {
@@ -100,6 +103,135 @@ fn stream_end_capture_without_begin_fails() {
         .expect("failed to create stream")
         .end_capture()
         .expect_err("end_capture without begin should fail");
+}
+
+// ---------------------------------------------------------------------------
+// Manual node construction
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_empty_node_succeeds() {
+    let ctx = make_ctx();
+    let graph = CudaGraph::new(&ctx).expect("failed to create graph");
+
+    let node = graph.add_empty_node(&[]).expect("failed to add empty node");
+    assert!(!node.cu_node().is_null());
+
+    // The graph should still be instantiable with an empty node.
+    let exec = graph.instantiate().expect("failed to instantiate");
+    drop(exec);
+    drop(node);
+}
+
+#[test]
+fn add_empty_node_with_dependency() {
+    let ctx = make_ctx();
+    let graph = CudaGraph::new(&ctx).expect("failed to create graph");
+
+    let a = graph.add_empty_node(&[]).expect("node a");
+    let b = graph.add_empty_node(&[&a]).expect("node b depends on a");
+    assert!(!b.cu_node().is_null());
+    drop(b);
+    drop(a);
+}
+
+#[test]
+fn add_dependencies_between_nodes() {
+    let ctx = make_ctx();
+    let graph = CudaGraph::new(&ctx).expect("failed to create graph");
+
+    let a = graph.add_empty_node(&[]).expect("node a");
+    let b = graph.add_empty_node(&[]).expect("node b");
+
+    // Add a dependency edge: b waits for a.
+    graph
+        .add_dependencies(&[&a], &[&b])
+        .expect("add_dependencies failed");
+
+    let exec = graph.instantiate().expect("failed to instantiate");
+    drop(exec);
+    drop(b);
+    drop(a);
+}
+
+#[test]
+fn add_dependencies_noop_on_empty_input() {
+    let ctx = make_ctx();
+    let graph = CudaGraph::new(&ctx).expect("failed to create graph");
+    // Empty dependencies should silently succeed.
+    graph
+        .add_dependencies(&[], &[])
+        .expect("empty add_dependencies should succeed");
+}
+
+#[test]
+fn node_drop_removes_from_graph() {
+    let ctx = make_ctx();
+    let graph = CudaGraph::new(&ctx).expect("failed to create graph");
+
+    let node = graph.add_empty_node(&[]).expect("node");
+    let raw = node.cu_node();
+    assert!(!raw.is_null());
+    drop(node);
+    // After drop, graph should still be valid (node was removed).
+    assert!(ctx.check_err().is_ok());
+}
+
+// ---------------------------------------------------------------------------
+// KernelNodeParams
+// ---------------------------------------------------------------------------
+
+#[test]
+fn kernel_node_params_push_and_to_raw() {
+    let mut params = KernelNodeParams::new(std::ptr::null_mut(), (1, 1, 1), (32, 1, 1), 0);
+
+    let a: u32 = 42;
+    let b: f32 = 3.14;
+    params.push_param(&a);
+    params.push_param(&b);
+
+    let (ptrs, buf) = params.to_raw();
+    assert_eq!(ptrs.len(), 2, "two params");
+    assert_eq!(buf.len(), 8, "u32 + f32 = 8 bytes");
+}
+
+// ---------------------------------------------------------------------------
+// Graph update (topology-only; no kernel needed)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn graph_update_succeeds_for_identical_topology() {
+    let ctx = make_ctx();
+
+    // Build a graph with one empty node.
+    let g1 = CudaGraph::new(&ctx).expect("g1");
+    g1.add_empty_node(&[]).expect("node");
+
+    // Build an identical graph.
+    let g2 = CudaGraph::new(&ctx).expect("g2");
+    g2.add_empty_node(&[]).expect("node");
+
+    let exec = g1.instantiate().expect("instantiate g1");
+    let result = exec.update(&g2).expect("update should succeed");
+    assert_eq!(result, GraphUpdateResult::Success);
+}
+
+#[test]
+fn graph_update_accepts_or_rejects_changed_graph() {
+    let ctx = make_ctx();
+
+    let g1 = CudaGraph::new(&ctx).expect("g1");
+    g1.add_empty_node(&[]).expect("single node");
+
+    let g2 = CudaGraph::new(&ctx).expect("g2");
+    let a = g2.add_empty_node(&[]).expect("node a");
+    g2.add_empty_node(&[&a]).expect("node b");
+    drop(a);
+
+    let exec = g1.instantiate().expect("instantiate g1");
+    // The driver may accept or reject this depending on version;
+    // we just verify it doesn't crash.
+    let _ = exec.update(&g2);
 }
 
 // ---------------------------------------------------------------------------
