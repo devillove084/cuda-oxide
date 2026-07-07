@@ -4149,3 +4149,156 @@ fn test_scalar_vs_tensor_core_fp4_instruction_count() {
         "expected at most 3 instructions (inline-asm + return + branch), got {total_instrs}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// mma.sync kind::f8f6f4 lowering tests (sm_120a consumer Blackwell)
+//
+// Verifies that MmaM16N8K32F8F6F4Op correctly lowers to inline PTX with
+// kind::f8f6f4 and the atype/btype from the op's StringAttr attributes.
+// ---------------------------------------------------------------------------
+
+/// Helper: create a MmaM16N8K32F8F6F4Op with given atype/btype, lower it,
+/// and return the inline-asm template string.
+fn lower_f8f6f4_mma_and_get_asm(atype: &str, btype: &str) -> String {
+    use pliron::builtin::attributes::StringAttr;
+
+    let mut ctx = make_test_ctx();
+    let f32_ty = pliron::builtin::types::FP32Type::get(&ctx);
+    let i32_ty = pliron::builtin::types::IntegerType::get(
+        &ctx, 32, pliron::builtin::types::Signedness::Signless,
+    );
+    // 10 operands: 4 f32 C + 4 i32 A + 2 i32 B
+    let arg_tys = vec![
+        f32_ty.into(), f32_ty.into(), f32_ty.into(), f32_ty.into(),
+        i32_ty.into(), i32_ty.into(), i32_ty.into(), i32_ty.into(),
+        i32_ty.into(), i32_ty.into(),
+    ];
+    let (module_ptr, entry) = build_test_kernel(&mut ctx, arg_tys);
+    let operands: Vec<_> = (0..10)
+        .map(|i| entry.deref(&ctx).get_argument(i))
+        .collect();
+
+    let op = Operation::new(
+        &mut ctx,
+        nvvm::MmaM16N8K32F8F6F4Op::get_concrete_op_info(),
+        vec![f32_ty.into(); 4], // 4 f32 results
+        operands,
+        vec![],
+        0,
+    );
+    // Set atype/btype as string attributes.
+    let typed = nvvm::MmaM16N8K32F8F6F4Op::new(op);
+    typed.set_attr_mma_atype(&mut ctx, StringAttr::new(atype.to_string()));
+    typed.set_attr_mma_btype(&mut ctx, StringAttr::new(btype.to_string()));
+    op.insert_at_back(entry, &ctx);
+    append_return(&mut ctx, entry);
+
+    mir_lower::lower_mir_to_llvm(&mut ctx, module_ptr)
+        .expect("lowering must succeed");
+
+    // Find the inline asm in the lowered module.
+    let module_op = module_ptr.deref(&ctx);
+    let region = module_op.get_region(0);
+    let block = region.deref(&ctx).iter(&ctx).next().unwrap();
+    for op in block.deref(&ctx).iter(&ctx) {
+        let Some(func_op) = Operation::get_op::<llvm::FuncOp>(op, &ctx) else {
+            continue;
+        };
+        if func_op.get_symbol_name(&ctx).to_string() != "kernel_func" {
+            continue;
+        }
+        let func_region = func_op.get_operation().deref(&ctx).get_region(0);
+        for func_block in func_region.deref(&ctx).iter(&ctx) {
+            for body_op in func_block.deref(&ctx).iter(&ctx) {
+                if let Some(asm) = Operation::get_op::<llvm::InlineAsmOp>(body_op, &ctx) {
+                    if let Some(tpl) = asm
+                        .get_attr_inline_asm_template(&ctx)
+                        .map(|s| String::from((*s).clone()))
+                    {
+                        if tpl.contains("mma.sync") {
+                            return tpl;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    panic!("no mma.sync inline asm found for atype={atype} btype={btype}");
+}
+
+#[test]
+fn test_mma_f8f6f4_e4m3_e4m3_lowers_correctly() {
+    let asm = lower_f8f6f4_mma_and_get_asm("e4m3", "e4m3");
+    assert!(
+        asm.contains("kind::f8f6f4.f32.e4m3.e4m3.f32"),
+        "expected kind::f8f6f4.f32.e4m3.e4m3.f32, got:\n{asm}"
+    );
+}
+
+#[test]
+fn test_mma_f8f6f4_e5m2_e5m2_lowers_correctly() {
+    let asm = lower_f8f6f4_mma_and_get_asm("e5m2", "e5m2");
+    assert!(
+        asm.contains("kind::f8f6f4.f32.e5m2.e5m2.f32"),
+        "expected kind::f8f6f4.f32.e5m2.e5m2.f32, got:\n{asm}"
+    );
+}
+
+#[test]
+fn test_mma_f8f6f4_e4m3_e5m2_mixed_type_lowers_correctly() {
+    let asm = lower_f8f6f4_mma_and_get_asm("e4m3", "e5m2");
+    assert!(
+        asm.contains("kind::f8f6f4.f32.e4m3.e5m2.f32"),
+        "expected kind::f8f6f4.f32.e4m3.e5m2.f32, got:\n{asm}"
+    );
+}
+
+#[test]
+fn test_mma_f8f6f4_e2m1_e2m1_fp4_lowers_correctly() {
+    let asm = lower_f8f6f4_mma_and_get_asm("e2m1", "e2m1");
+    assert!(
+        asm.contains("kind::f8f6f4.f32.e2m1.e2m1.f32"),
+        "expected kind::f8f6f4.f32.e2m1.e2m1.f32, got:\n{asm}"
+    );
+}
+
+#[test]
+fn test_mma_f8f6f4_e3m2_e3m2_fp6_lowers_correctly() {
+    let asm = lower_f8f6f4_mma_and_get_asm("e3m2", "e3m2");
+    assert!(
+        asm.contains("kind::f8f6f4.f32.e3m2.e3m2.f32"),
+        "expected kind::f8f6f4.f32.e3m2.e3m2.f32, got:\n{asm}"
+    );
+}
+
+#[test]
+fn test_mma_f8f6f4_e2m3_e2m3_fp6_lowers_correctly() {
+    let asm = lower_f8f6f4_mma_and_get_asm("e2m3", "e2m3");
+    assert!(
+        asm.contains("kind::f8f6f4.f32.e2m3.e2m3.f32"),
+        "expected kind::f8f6f4.f32.e2m3.e2m3.f32, got:\n{asm}"
+    );
+}
+
+/// Verify that all f8f6f4 types share the same PTX instruction prefix
+/// `mma.sync.aligned.m16n8k32.row.col.kind::f8f6f4` — only the type
+/// qualifiers differ, confirming the single-op design works correctly.
+#[test]
+fn test_all_f8f6f4_mma_types_share_same_instruction_prefix() {
+    let type_pairs = [
+        ("e4m3", "e4m3"),
+        ("e5m2", "e5m2"),
+        ("e4m3", "e5m2"),
+        ("e2m1", "e2m1"),
+        ("e3m2", "e3m2"),
+        ("e2m3", "e2m3"),
+    ];
+
+    for (atype, btype) in type_pairs {
+        let asm = lower_f8f6f4_mma_and_get_asm(atype, btype);
+        assert!(
+            asm.contains("mma.sync.aligned.m16n8k32.row.col.kind::f8f6f4"),
+            "{atype}×{btype}: expected common prefix, got:\n{asm}"
+        );
+    }
+}

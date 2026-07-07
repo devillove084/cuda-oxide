@@ -443,3 +443,111 @@ pub unsafe fn mma_m16n8k32_s32_s8(c: [i32; 4], a: [u32; 4], b: [u32; 2]) -> [i32
     let _ = (c, a, b);
     unreachable!("mma_m16n8k32_s32_s8 called outside CUDA kernel context")
 }
+
+/// FP8 E4M3 × E4M3 warp MMA (sm_120a+).
+///
+/// # Safety
+///
+/// - All 32 lanes in the warp must execute the same call with the same
+///   qualifiers. Calling from divergent control flow, or after any lane has
+///   exited, is undefined behavior.
+/// - `c`, `a`, and `b` must contain the calling lane's fragments in the
+///   `mma.sync.aligned.m16n8k32` layout. A different layout computes a
+///   different matrix operation.
+/// - Requires `sm_120a+` (consumer Blackwell). cuda-oxide selects the target
+///   floor automatically.
+#[inline(never)]
+pub unsafe fn mma_m16n8k32_f32_e4m3_e4m3(c: [f32; 4], a: [u32; 4], b: [u32; 2]) -> [f32; 4] {
+    let _ = (c, a, b);
+    unreachable!("mma_m16n8k32_f32_e4m3_e4m3 called outside CUDA kernel context")
+}
+
+/// FP8 E5M2 × E5M2 warp MMA (sm_120a+).
+///
+/// # Safety
+///
+/// - All 32 lanes in the warp must execute the same call with the same
+///   qualifiers. Calling from divergent control flow, or after any lane has
+///   exited, is undefined behavior.
+/// - `c`, `a`, and `b` must contain the calling lane's fragments in the
+///   `mma.sync.aligned.m16n8k32` layout. A different layout computes a
+///   different matrix operation.
+/// - Requires `sm_120a+` (consumer Blackwell). cuda-oxide selects the target
+///   floor automatically.
+#[inline(never)]
+pub unsafe fn mma_m16n8k32_f32_e5m2_e5m2(c: [f32; 4], a: [u32; 4], b: [u32; 2]) -> [f32; 4] {
+    let _ = (c, a, b);
+    unreachable!("mma_m16n8k32_f32_e5m2_e5m2 called outside CUDA kernel context")
+}
+
+/// FP8 E4M3 × E5M2 warp MMA (sm_120a+).
+///
+/// # Safety
+///
+/// - All 32 lanes in the warp must execute the same call with the same
+///   qualifiers. Calling from divergent control flow, or after any lane has
+///   exited, is undefined behavior.
+/// - `c`, `a`, and `b` must contain the calling lane's fragments in the
+///   `mma.sync.aligned.m16n8k32` layout. A different layout computes a
+///   different matrix operation.
+/// - Requires `sm_120a+` (consumer Blackwell). cuda-oxide selects the target
+///   floor automatically.
+#[inline(never)]
+pub unsafe fn mma_m16n8k32_f32_e4m3_e5m2(c: [f32; 4], a: [u32; 4], b: [u32; 2]) -> [f32; 4] {
+    let _ = (c, a, b);
+    unreachable!("mma_m16n8k32_f32_e4m3_e5m2 called outside CUDA kernel context")
+}
+
+/// FP6 E3M2 × E3M2 warp MMA (sm_120a+).
+///
+/// # Safety
+///
+/// - All 32 lanes in the warp must execute the same call with the same
+///   qualifiers. Calling from divergent control flow, or after any lane has
+///   exited, is undefined behavior.
+/// - `c`, `a`, and `b` must contain the calling lane's fragments in the
+///   `mma.sync.aligned.m16n8k32` layout. A different layout computes a
+///   different matrix operation.
+/// - Requires `sm_120a+` (consumer Blackwell). cuda-oxide selects the target
+///   floor automatically.
+#[inline(never)]
+pub unsafe fn mma_m16n8k32_f32_e3m2_e3m2(c: [f32; 4], a: [u32; 4], b: [u32; 2]) -> [f32; 4] {
+    let _ = (c, a, b);
+    unreachable!("mma_m16n8k32_f32_e3m2_e3m2 called outside CUDA kernel context")
+}
+
+/// FP6 E2M3 × E2M3 warp MMA (sm_120a+).
+///
+/// # Safety
+///
+/// - All 32 lanes in the warp must execute the same call with the same
+///   qualifiers. Calling from divergent control flow, or after any lane has
+///   exited, is undefined behavior.
+/// - `c`, `a`, and `b` must contain the calling lane's fragments in the
+///   `mma.sync.aligned.m16n8k32` layout. A different layout computes a
+///   different matrix operation.
+/// - Requires `sm_120a+` (consumer Blackwell). cuda-oxide selects the target
+///   floor automatically.
+#[inline(never)]
+pub unsafe fn mma_m16n8k32_f32_e2m3_e2m3(c: [f32; 4], a: [u32; 4], b: [u32; 2]) -> [f32; 4] {
+    let _ = (c, a, b);
+    unreachable!("mma_m16n8k32_f32_e2m3_e2m3 called outside CUDA kernel context")
+}
+
+/// FP4 E2M1 × E2M1 warp MMA (sm_120a+).
+///
+/// # Safety
+///
+/// - All 32 lanes in the warp must execute the same call with the same
+///   qualifiers. Calling from divergent control flow, or after any lane has
+///   exited, is undefined behavior.
+/// - `c`, `a`, and `b` must contain the calling lane's fragments in the
+///   `mma.sync.aligned.m16n8k32` layout. A different layout computes a
+///   different matrix operation.
+/// - Requires `sm_120a+` (consumer Blackwell). cuda-oxide selects the target
+///   floor automatically.
+#[inline(never)]
+pub unsafe fn mma_m16n8k32_f32_e2m1_e2m1(c: [f32; 4], a: [u32; 4], b: [u32; 2]) -> [f32; 4] {
+    let _ = (c, a, b);
+    unreachable!("mma_m16n8k32_f32_e2m1_e2m1 called outside CUDA kernel context")
+}

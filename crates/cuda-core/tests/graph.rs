@@ -5,8 +5,9 @@
 
 //! Integration tests for CUDA graph capture, instantiation, and launch.
 //!
-//! These tests share the same CUDA primary context (device 0), so they must
-//! run serially. Use `cargo test --test graph -- --test-threads=1`.
+//! Each test creates a dedicated CUDA context via [`CudaContext::new_dedicated`]
+//! so that stream capture and graph operations are fully isolated. Tests can
+//! run in parallel without `--test-threads=1`.
 
 use cuda_core::{
     CaptureMode, CudaContext, CudaGraph, CudaStreamCaptureExt, GraphUpdateResult, IntoResult,
@@ -15,7 +16,7 @@ use cuda_core::{
 use std::sync::Arc;
 
 fn make_ctx() -> Arc<CudaContext> {
-    CudaContext::new(0).expect("failed to create CUDA context")
+    CudaContext::new_dedicated(0).expect("failed to create dedicated CUDA context")
 }
 
 // ---------------------------------------------------------------------------

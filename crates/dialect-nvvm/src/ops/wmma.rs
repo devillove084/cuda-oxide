@@ -6,6 +6,7 @@
 //! Warp-level matrix dialect operations.
 
 use pliron::{
+    builtin::attributes::StringAttr,
     builtin::op_interfaces::{NOpdsInterface, NResultsInterface},
     builtin::types::{FP32Type, FP64Type, IntegerType},
     common_traits::Verify,
@@ -482,6 +483,45 @@ impl MmaM8N8K4F64Op {
     }
 }
 
+// =============================================================================
+// FP8/FP6/FP4 mma.sync (sm_120a consumer Blackwell)
+//
+// One op per kind, with atype/btype as StringAttr attributes.
+// The lowering reads the attributes and generates the correct PTX mnemonic.
+// This avoids creating 25+ ops for all atype×btype combinations.
+// =============================================================================
+
+/// Warp MMA: m16n8k32 with f32 accumulator and f8f6f4 inputs (sm_120a+).
+///
+/// # Operands
+///
+/// - operands 0-3: four f32 C accumulator registers
+/// - operands 4-7: four i32 A fragment registers (packed sub-byte values)
+/// - operands 8-9: two i32 B fragment registers (packed sub-byte values)
+///
+/// # Results
+///
+/// - results 0-3: four f32 D accumulator registers
+///
+/// # Attributes
+///
+/// - `mma_atype`: one of "e4m3", "e5m2", "e2m3", "e3m2", "e2m1"
+/// - `mma_btype`: same set
+#[pliron_op(
+    name = "nvvm.mma_m16n8k32_f8f6f4",
+    format,
+    verifier = "succ",
+    interfaces = [NOpdsInterface<10>, NResultsInterface<4>],
+    attributes = (mma_atype: StringAttr, mma_btype: StringAttr)
+)]
+pub struct MmaM16N8K32F8F6F4Op;
+
+impl MmaM16N8K32F8F6F4Op {
+    pub fn new(op: Ptr<Operation>) -> Self {
+        MmaM16N8K32F8F6F4Op { op }
+    }
+}
+
 /// Register WMMA operations with the context.
 pub(super) fn register(ctx: &mut Context) {
     MovmatrixTransB16Op::register(ctx);
@@ -490,4 +530,5 @@ pub(super) fn register(ctx: &mut Context) {
     MmaM16N8K8F32Tf32Op::register(ctx);
     MmaM16N8K32S32S8Op::register(ctx);
     MmaM8N8K4F64Op::register(ctx);
+    MmaM16N8K32F8F6F4Op::register(ctx);
 }
