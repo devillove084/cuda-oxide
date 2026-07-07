@@ -3910,6 +3910,31 @@ fn try_dispatch_intrinsic(
                 ctx, body, args, target, block_ptr, prev_op, value_map, block_map, loc,
             )?))
         }
+        "cuda_device::tcgen05::tcgen05_mma_ws_e4m3" => {
+            Ok(Some(intrinsics::tcgen05::emit_tcgen05_mma_ws_e4m3(
+                ctx, body, args, target, block_ptr, prev_op, value_map, block_map, loc,
+            )?))
+        }
+        "cuda_device::tcgen05::tcgen05_mma_ws_e5m2" => {
+            Ok(Some(intrinsics::tcgen05::emit_tcgen05_mma_ws_e5m2(
+                ctx, body, args, target, block_ptr, prev_op, value_map, block_map, loc,
+            )?))
+        }
+        "cuda_device::tcgen05::tcgen05_mma_ws_e2m3" => {
+            Ok(Some(intrinsics::tcgen05::emit_tcgen05_mma_ws_e2m3(
+                ctx, body, args, target, block_ptr, prev_op, value_map, block_map, loc,
+            )?))
+        }
+        "cuda_device::tcgen05::tcgen05_mma_ws_e3m2" => {
+            Ok(Some(intrinsics::tcgen05::emit_tcgen05_mma_ws_e3m2(
+                ctx, body, args, target, block_ptr, prev_op, value_map, block_map, loc,
+            )?))
+        }
+        "cuda_device::tcgen05::tcgen05_mma_ws_e2m1" => {
+            Ok(Some(intrinsics::tcgen05::emit_tcgen05_mma_ws_e2m1(
+                ctx, body, args, target, block_ptr, prev_op, value_map, block_map, loc,
+            )?))
+        }
         "cuda_device::tcgen05::tcgen05_cp_smem_to_tmem" => {
             Ok(Some(intrinsics::tcgen05::emit_tcgen05_cp_smem_to_tmem(
                 ctx, body, args, target, block_ptr, prev_op, value_map, block_map, loc,

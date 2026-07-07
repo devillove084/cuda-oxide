@@ -399,6 +399,51 @@ impl Tcgen05MmaWsE5M2Op {
     }
 }
 
+/// tcgen05 MMA with FP6 E2M3 inputs.
+#[pliron_op(
+    name = "nvvm.tcgen05_mma_ws_e2m3",
+    format,
+    verifier = "succ",
+    interfaces = [NOpdsInterface<6>, NResultsInterface<0>],
+)]
+pub struct Tcgen05MmaWsE2M3Op;
+
+impl Tcgen05MmaWsE2M3Op {
+    pub fn new(op: Ptr<Operation>) -> Self {
+        Tcgen05MmaWsE2M3Op { op }
+    }
+}
+
+/// tcgen05 MMA with FP6 E3M2 inputs.
+#[pliron_op(
+    name = "nvvm.tcgen05_mma_ws_e3m2",
+    format,
+    verifier = "succ",
+    interfaces = [NOpdsInterface<6>, NResultsInterface<0>],
+)]
+pub struct Tcgen05MmaWsE3M2Op;
+
+impl Tcgen05MmaWsE3M2Op {
+    pub fn new(op: Ptr<Operation>) -> Self {
+        Tcgen05MmaWsE3M2Op { op }
+    }
+}
+
+/// tcgen05 MMA with FP4 E2M1 inputs.
+#[pliron_op(
+    name = "nvvm.tcgen05_mma_ws_e2m1",
+    format,
+    verifier = "succ",
+    interfaces = [NOpdsInterface<6>, NResultsInterface<0>],
+)]
+pub struct Tcgen05MmaWsE2M1Op;
+
+impl Tcgen05MmaWsE2M1Op {
+    pub fn new(op: Ptr<Operation>) -> Self {
+        Tcgen05MmaWsE2M1Op { op }
+    }
+}
+
 // =============================================================================
 // Data Movement Operations
 // =============================================================================
@@ -757,6 +802,9 @@ pub(super) fn register(ctx: &mut Context) {
     Tcgen05MmaWsTf32Op::register(ctx);
     Tcgen05MmaWsE4M3Op::register(ctx);
     Tcgen05MmaWsE5M2Op::register(ctx);
+    Tcgen05MmaWsE2M3Op::register(ctx);
+    Tcgen05MmaWsE3M2Op::register(ctx);
+    Tcgen05MmaWsE2M1Op::register(ctx);
     // Data movement (SMEM→TMEM only; TMEM→SMEM removed - use Pure load + stmatrix)
     Tcgen05CpSmemToTmemOp::register(ctx);
     // NOTE: StTmemToSmem ops removed - incorrect approach

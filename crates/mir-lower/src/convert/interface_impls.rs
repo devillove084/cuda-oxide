@@ -82,8 +82,9 @@ use dialect_nvvm::ops::{
     Tcgen05CommitSharedClusterCg2Op, Tcgen05CommitSharedClusterOp, Tcgen05CpSmemToTmemCg2Op,
     Tcgen05CpSmemToTmemOp, Tcgen05DeallocCg2Op, Tcgen05DeallocOp, Tcgen05FenceAfterThreadSyncOp,
     Tcgen05FenceBeforeThreadSyncOp, Tcgen05Ld16x256bPureOp, Tcgen05Ld16x256bX8PureOp,
-    Tcgen05LoadWaitOp, Tcgen05MmaF16Cg2Op, Tcgen05MmaF16Op, Tcgen05MmaWsBf16Op, Tcgen05MmaWsE4M3Op,
-    Tcgen05MmaWsE5M2Op, Tcgen05MmaWsF16Op, Tcgen05MmaWsTf32Op, Tcgen05RelinquishAllocPermitCg2Op,
+    Tcgen05LoadWaitOp, Tcgen05MmaF16Cg2Op, Tcgen05MmaF16Op, Tcgen05MmaWsBf16Op, Tcgen05MmaWsE2M1Op,
+    Tcgen05MmaWsE2M3Op, Tcgen05MmaWsE3M2Op, Tcgen05MmaWsE4M3Op, Tcgen05MmaWsE5M2Op,
+    Tcgen05MmaWsF16Op, Tcgen05MmaWsTf32Op, Tcgen05RelinquishAllocPermitCg2Op,
     Tcgen05RelinquishAllocPermitOp, Tcgen05StoreWaitOp, ThreadfenceBlockOp, ThreadfenceOp,
     ThreadfenceSystemOp, TrapOp, VoteSyncAllOp, VoteSyncAnyOp, VoteSyncBallotOp, VprintfOp,
     WgmmaCommitGroupSyncAlignedOp, WgmmaFenceSyncAlignedOp, WgmmaMakeSmemDescOp,
@@ -3049,7 +3050,7 @@ impl MirToLlvmConversion for Tcgen05MmaWsBf16Op {
             rewriter,
             self.get_operation(),
             operands_info,
-            "bf16",
+            "f16",
         )
     }
 }
@@ -3085,7 +3086,7 @@ impl MirToLlvmConversion for Tcgen05MmaWsE4M3Op {
             rewriter,
             self.get_operation(),
             operands_info,
-            "f16",
+            "f8f6f4",
         )
     }
 }
@@ -3103,7 +3104,61 @@ impl MirToLlvmConversion for Tcgen05MmaWsE5M2Op {
             rewriter,
             self.get_operation(),
             operands_info,
-            "f16",
+            "f8f6f4",
+        )
+    }
+}
+
+#[op_interface_impl]
+impl MirToLlvmConversion for Tcgen05MmaWsE2M3Op {
+    fn convert(
+        &self,
+        ctx: &mut Context,
+        rewriter: &mut DialectConversionRewriter,
+        operands_info: &OperandsInfo,
+    ) -> Result<()> {
+        super::intrinsics::tcgen05::convert_mma_ws(
+            ctx,
+            rewriter,
+            self.get_operation(),
+            operands_info,
+            "f8f6f4",
+        )
+    }
+}
+
+#[op_interface_impl]
+impl MirToLlvmConversion for Tcgen05MmaWsE3M2Op {
+    fn convert(
+        &self,
+        ctx: &mut Context,
+        rewriter: &mut DialectConversionRewriter,
+        operands_info: &OperandsInfo,
+    ) -> Result<()> {
+        super::intrinsics::tcgen05::convert_mma_ws(
+            ctx,
+            rewriter,
+            self.get_operation(),
+            operands_info,
+            "f8f6f4",
+        )
+    }
+}
+
+#[op_interface_impl]
+impl MirToLlvmConversion for Tcgen05MmaWsE2M1Op {
+    fn convert(
+        &self,
+        ctx: &mut Context,
+        rewriter: &mut DialectConversionRewriter,
+        operands_info: &OperandsInfo,
+    ) -> Result<()> {
+        super::intrinsics::tcgen05::convert_mma_ws(
+            ctx,
+            rewriter,
+            self.get_operation(),
+            operands_info,
+            "f8f6f4",
         )
     }
 }

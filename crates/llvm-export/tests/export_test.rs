@@ -2888,3 +2888,209 @@ fn device_extern_fp8_roundtrips_through_pliron_conversion() {
         assert_eq!(arr_str, format!("[8 x {expected_elem}]"), "array of {ty:?}");
     }
 }
+
+// ---------------------------------------------------------------------------
+// FP4 / FP6 DeviceExternType tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn device_extern_fp4_fp6_types_emit_as_i8() {
+    // All sub-byte float types (FP8, FP6, FP4) lower to i8 in LLVM IR
+    // because pliron/LLVM lack dedicated types for them.
+    for ty in [
+        DeviceExternType::Float4E2M1,
+        DeviceExternType::Float6E3M2,
+        DeviceExternType::Float6E2M3,
+    ] {
+        assert_eq!(
+            ty.llvm_string(false)
+                .unwrap_or_else(|e| panic!("{ty:?} must be representable: {e}")),
+            "i8",
+            "{ty:?} must render as `i8`"
+        );
+    }
+}
+
+#[test]
+fn device_extern_fp4_fp6_legacy_typed_pointer_emits_as_i8() {
+    let ptr_fp4 = DeviceExternType::pointer_to(DeviceExternType::Float4E2M1, 0);
+    assert_eq!(
+        ptr_fp4
+            .llvm_string(true)
+            .expect("FP4 pointer must be representable"),
+        "i8*"
+    );
+
+    let ptr_fp6_as3 = DeviceExternType::pointer_to(DeviceExternType::Float6E3M2, 3);
+    assert_eq!(
+        ptr_fp6_as3
+            .llvm_string(true)
+            .expect("FP6 shared pointer must be representable"),
+        "i8 addrspace(3)*"
+    );
+
+    let ptr_fp6_e2m3 = DeviceExternType::pointer_to(DeviceExternType::Float6E2M3, 0);
+    assert_eq!(
+        ptr_fp6_e2m3
+            .llvm_string(true)
+            .expect("FP6 E2M3 pointer must be representable"),
+        "i8*"
+    );
+}
+
+#[test]
+fn device_extern_fp4_extern_declaration_exports_correctly() {
+    let mut ctx = Context::new();
+    let module = ModuleOp::new(&mut ctx, "fp4_test".try_into().unwrap());
+    let module_block = module_top_block(&mut ctx, &module);
+
+    let i8_ty = IntegerType::get(&ctx, 8, Signedness::Signless);
+    let void_ty = VoidType::get(&ctx);
+    let external_ty = FuncType::get(&ctx, void_ty.into(), vec![i8_ty.into()], false);
+    FuncOp::new(&mut ctx, "consume_fp4".try_into().unwrap(), external_ty)
+        .get_operation()
+        .insert_at_back(module_block, &ctx);
+
+    let caller_ty = FuncType::get(&ctx, void_ty.into(), vec![i8_ty.into()], false);
+    let caller = FuncOp::new(&mut ctx, "caller".try_into().unwrap(), caller_ty);
+    let entry = caller.get_or_create_entry_block(&mut ctx);
+    let val = entry.deref(&ctx).get_argument(0);
+    CallOp::new(
+        &mut ctx,
+        CallOpCallable::Direct("consume_fp4".try_into().unwrap()),
+        external_ty,
+        vec![val],
+    )
+    .get_operation()
+    .insert_at_back(entry, &ctx);
+    ReturnOp::new(&mut ctx, None)
+        .get_operation()
+        .insert_at_back(entry, &ctx);
+    caller.get_operation().insert_at_back(module_block, &ctx);
+
+    let externs = [DeviceExternDecl {
+        export_name: "consume_fp4".to_string(),
+        param_types: vec![DeviceExternType::Float4E2M1],
+        return_type: DeviceExternType::Void,
+        attrs: DeviceExternAttrs::default(),
+    }];
+
+    // Modern opaque-pointer dialect: FP4 is i8.
+    let ir = export_module_with_externs(
+        &ctx,
+        &module,
+        &externs,
+        &NvvmExportConfig::new(NvvmIrDialect::Modern),
+    )
+    .expect("FP4 extern must export in modern mode");
+    assert!(ir.contains("declare void @consume_fp4(i8)"), "{ir}");
+
+    // Legacy dialect.
+    let legacy = export_module_with_externs(
+        &ctx,
+        &module,
+        &externs,
+        &NvvmExportConfig::new(NvvmIrDialect::LegacyLlvm7),
+    )
+    .expect("FP4 extern must export in legacy mode");
+    assert!(legacy.contains("declare void @consume_fp4(i8)"), "{legacy}");
+}
+
+#[test]
+fn device_extern_fp6_rejects_type_mismatch() {
+    let mut ctx = Context::new();
+    let module = ModuleOp::new(&mut ctx, "fp6_mismatch".try_into().unwrap());
+    let module_block = module_top_block(&mut ctx, &module);
+
+    let f32_ty = FP32Type::get(&ctx);
+    let void_ty = VoidType::get(&ctx);
+    let external_ty = FuncType::get(&ctx, void_ty.into(), vec![f32_ty.into()], false);
+    FuncOp::new(&mut ctx, "float_consumer".try_into().unwrap(), external_ty)
+        .get_operation()
+        .insert_at_back(module_block, &ctx);
+
+    let caller_ty = FuncType::get(&ctx, void_ty.into(), vec![f32_ty.into()], false);
+    let caller = FuncOp::new(&mut ctx, "caller".try_into().unwrap(), caller_ty);
+    let entry = caller.get_or_create_entry_block(&mut ctx);
+    let val = entry.deref(&ctx).get_argument(0);
+    CallOp::new(
+        &mut ctx,
+        CallOpCallable::Direct("float_consumer".try_into().unwrap()),
+        external_ty,
+        vec![val],
+    )
+    .get_operation()
+    .insert_at_back(entry, &ctx);
+    ReturnOp::new(&mut ctx, None)
+        .get_operation()
+        .insert_at_back(entry, &ctx);
+    caller.get_operation().insert_at_back(module_block, &ctx);
+
+    // FP6E3M2 declared but f32 passed — must be rejected.
+    let externs = [DeviceExternDecl {
+        export_name: "float_consumer".to_string(),
+        param_types: vec![DeviceExternType::Float6E3M2],
+        return_type: DeviceExternType::Void,
+        attrs: DeviceExternAttrs::default(),
+    }];
+    let err = export_module_with_externs(
+        &ctx,
+        &module,
+        &externs,
+        &NvvmExportConfig::new(NvvmIrDialect::Modern),
+    )
+    .expect_err("FP6 vs f32 type mismatch must be rejected");
+    assert!(
+        err.contains("does not match"),
+        "must report type mismatch: {err}"
+    );
+}
+
+#[test]
+fn device_extern_all_subbyte_float_types_roundtrip() {
+    // Verify that all sub-byte float types (FP8, FP6, FP4) correctly
+    // render as i8, work in pointer/array wrappers, and have consistent
+    // behavior across modern and legacy LLVM dialects.
+    let all_subbyte = [
+        DeviceExternType::Float8E4M3,
+        DeviceExternType::Float8E5M2,
+        DeviceExternType::Float6E3M2,
+        DeviceExternType::Float6E2M3,
+        DeviceExternType::Float4E2M1,
+    ];
+
+    for ty in all_subbyte {
+        // Modern dialect: scalar
+        assert_eq!(
+            ty.llvm_string(false).unwrap(),
+            "i8",
+            "{ty:?} must render as i8"
+        );
+
+        // Modern dialect: pointer (opaque)
+        let ptr = DeviceExternType::pointer_to(ty.clone(), 0);
+        assert_eq!(
+            ptr.llvm_string(false).unwrap(),
+            "ptr",
+            "modern ptr for {ty:?}"
+        );
+
+        // Legacy dialect: typed pointer
+        assert_eq!(
+            ptr.llvm_string(true).unwrap(),
+            "i8*",
+            "legacy ptr for {ty:?}"
+        );
+
+        // Array wrapper
+        let arr = DeviceExternType::Array {
+            element: Box::new(ty.clone()),
+            len: 16,
+        };
+        assert_eq!(
+            arr.llvm_string(false).unwrap(),
+            "[16 x i8]",
+            "array of {ty:?}"
+        );
+    }
+}

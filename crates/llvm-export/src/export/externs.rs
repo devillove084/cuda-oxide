@@ -32,6 +32,13 @@ pub enum DeviceExternType {
     Float8E4M3,
     /// FP8 with 5 exponent + 2 mantissa bits (E5M2). Same lowering as above.
     Float8E5M2,
+    /// FP4 with 2 exponent + 1 mantissa bits (E2M1). Blackwell-native;
+    /// LLVM lacks a dedicated type, so we lower to `i8`.
+    Float4E2M1,
+    /// FP6 with 3 exponent + 2 mantissa bits (E3M2). Same lowering as above.
+    Float6E3M2,
+    /// FP6 with 2 exponent + 3 mantissa bits (E2M3). Same lowering as above.
+    Float6E2M3,
     /// A pointer with an exact pointee and NVVM address space.
     Pointer {
         pointee: Box<DeviceExternType>,
@@ -100,7 +107,11 @@ impl DeviceExternType {
             Self::Float32 => write!(output, "float").unwrap(),
             Self::Float64 => write!(output, "double").unwrap(),
             Self::BFloat16 => write!(output, "i16").unwrap(),
-            Self::Float8E4M3 | Self::Float8E5M2 => write!(output, "i8").unwrap(),
+            Self::Float8E4M3
+            | Self::Float8E5M2
+            | Self::Float4E2M1
+            | Self::Float6E3M2
+            | Self::Float6E2M3 => write!(output, "i8").unwrap(),
             Self::Pointer {
                 pointee,
                 address_space,

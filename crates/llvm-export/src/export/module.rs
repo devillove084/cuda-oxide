@@ -106,7 +106,7 @@ fn device_extern_type_matches_erased(
         DeviceExternType::BFloat16 => actual
             .downcast_ref::<IntegerType>()
             .is_some_and(|ty| ty.width() == 16),
-        DeviceExternType::Float8E4M3 | DeviceExternType::Float8E5M2 => actual
+        DeviceExternType::Float8E4M3 | DeviceExternType::Float8E5M2 | DeviceExternType::Float4E2M1 | DeviceExternType::Float6E3M2 | DeviceExternType::Float6E2M3 => actual
             .downcast_ref::<IntegerType>()
             .is_some_and(|ty| ty.width() == 8),
         DeviceExternType::Pointer { address_space, .. } => actual
