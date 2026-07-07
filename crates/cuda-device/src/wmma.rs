@@ -573,3 +573,110 @@ pub unsafe fn mma_m16n8k64_mxf4_f32_e2m1_e2m1_b0_t0_b0_t0(
     let _ = (c, a, b, scale_a, scale_b);
     unreachable!("mma_m16n8k64_mxf4_f32_e2m1_e2m1_b0_t0_b0_t0 called outside CUDA kernel context")
 }
+
+// =============================================================================
+// mxf4 selector variants for full 16×8 tile coverage
+//
+// The scale-factor selectors (byte_id, thread_id) are PTX compile-time
+// literals that control which lane's scale register and which byte within
+// it the tensor core reads. With scale_vec::2X:
+//
+//   byte_id ∈ {0, 2}    — selects K-block 0 (byte 0) or K-block 1 (byte 2)
+//   thread_id ∈ {0, 2}   — selects lower thread pair (rows 0-7) or upper (rows 8-15)
+//
+// A full 16×8×64 tile requires 8 MMA calls (2 K-blocks × 2 row-halves × 2 col-halves):
+//
+//   K-block 0:  b0_t0_b0_t0  b0_t0_b0_t2  b0_t2_b0_t0  b0_t2_b0_t2
+//   K-block 1:  b2_t0_b2_t0  b2_t0_b2_t2  b2_t2_b2_t0  b2_t2_b2_t2
+// =============================================================================
+
+/// mxf4 MMA — A: rows 8-15 K-blk0, B: cols 0-3 K-blk0.
+#[inline(never)]
+pub unsafe fn mma_m16n8k64_mxf4_f32_e2m1_e2m1_b0_t2_b0_t0(
+    c: [f32; 4],
+    a: [u32; 4],
+    b: [u32; 2],
+    scale_a: u32,
+    scale_b: u32,
+) -> [f32; 4] {
+    let _ = (c, a, b, scale_a, scale_b);
+    unreachable!("called outside CUDA kernel context")
+}
+
+/// mxf4 MMA — A: rows 0-7 K-blk0, B: cols 4-7 K-blk0.
+#[inline(never)]
+pub unsafe fn mma_m16n8k64_mxf4_f32_e2m1_e2m1_b0_t0_b0_t2(
+    c: [f32; 4],
+    a: [u32; 4],
+    b: [u32; 2],
+    scale_a: u32,
+    scale_b: u32,
+) -> [f32; 4] {
+    let _ = (c, a, b, scale_a, scale_b);
+    unreachable!("called outside CUDA kernel context")
+}
+
+/// mxf4 MMA — A: rows 8-15 K-blk0, B: cols 4-7 K-blk0.
+#[inline(never)]
+pub unsafe fn mma_m16n8k64_mxf4_f32_e2m1_e2m1_b0_t2_b0_t2(
+    c: [f32; 4],
+    a: [u32; 4],
+    b: [u32; 2],
+    scale_a: u32,
+    scale_b: u32,
+) -> [f32; 4] {
+    let _ = (c, a, b, scale_a, scale_b);
+    unreachable!("called outside CUDA kernel context")
+}
+
+/// mxf4 MMA — A: rows 0-7 K-blk1, B: cols 0-3 K-blk1.
+#[inline(never)]
+pub unsafe fn mma_m16n8k64_mxf4_f32_e2m1_e2m1_b2_t0_b2_t0(
+    c: [f32; 4],
+    a: [u32; 4],
+    b: [u32; 2],
+    scale_a: u32,
+    scale_b: u32,
+) -> [f32; 4] {
+    let _ = (c, a, b, scale_a, scale_b);
+    unreachable!("called outside CUDA kernel context")
+}
+
+/// mxf4 MMA — A: rows 8-15 K-blk1, B: cols 0-3 K-blk1.
+#[inline(never)]
+pub unsafe fn mma_m16n8k64_mxf4_f32_e2m1_e2m1_b2_t2_b2_t0(
+    c: [f32; 4],
+    a: [u32; 4],
+    b: [u32; 2],
+    scale_a: u32,
+    scale_b: u32,
+) -> [f32; 4] {
+    let _ = (c, a, b, scale_a, scale_b);
+    unreachable!("called outside CUDA kernel context")
+}
+
+/// mxf4 MMA — A: rows 0-7 K-blk1, B: cols 4-7 K-blk1.
+#[inline(never)]
+pub unsafe fn mma_m16n8k64_mxf4_f32_e2m1_e2m1_b2_t0_b2_t2(
+    c: [f32; 4],
+    a: [u32; 4],
+    b: [u32; 2],
+    scale_a: u32,
+    scale_b: u32,
+) -> [f32; 4] {
+    let _ = (c, a, b, scale_a, scale_b);
+    unreachable!("called outside CUDA kernel context")
+}
+
+/// mxf4 MMA — A: rows 8-15 K-blk1, B: cols 4-7 K-blk1.
+#[inline(never)]
+pub unsafe fn mma_m16n8k64_mxf4_f32_e2m1_e2m1_b2_t2_b2_t2(
+    c: [f32; 4],
+    a: [u32; 4],
+    b: [u32; 2],
+    scale_a: u32,
+    scale_b: u32,
+) -> [f32; 4] {
+    let _ = (c, a, b, scale_a, scale_b);
+    unreachable!("called outside CUDA kernel context")
+}
